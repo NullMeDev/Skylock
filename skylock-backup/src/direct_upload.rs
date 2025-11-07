@@ -166,7 +166,7 @@ impl DirectUploadBackup {
         let semaphore = Arc::new(Semaphore::new(self.max_parallel));
         let mut tasks = Vec::new();
         
-        // Create progress bars
+        // Create progress bars (indicatif auto-detects TTY)
         let multi = MultiProgress::new();
         
         // Overall progress bar
@@ -179,7 +179,7 @@ impl DirectUploadBackup {
         );
         overall_pb.set_message("📦 Overall Progress");
         
-        // Current file progress bar
+        // Current file progress bar  
         let file_pb = multi.add(ProgressBar::new(100));
         file_pb.set_style(
             ProgressStyle::default_bar()
@@ -188,6 +188,7 @@ impl DirectUploadBackup {
                 .progress_chars("█▓▒░ ")
                 .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
         );
+        file_pb.enable_steady_tick(Duration::from_millis(100));
         
         let overall_pb_clone = overall_pb.clone();
         let file_pb_clone = file_pb.clone();
