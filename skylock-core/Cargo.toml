@@ -1,0 +1,72 @@
+[package]
+name = "skylock-core"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["hetzner-storage"]
+
+# Storage backends
+hetzner-storage = []
+aws-storage = ["aws-config", "aws-sdk-s3"]
+azure-storage = ["azure_storage_blobs"]
+gcp-storage = ["google-cloud-storage"]
+backblaze-storage = ["backblaze-b2"]
+hetzner-api = []
+
+# Platform-specific features
+windows-vss = []
+unix-lvm = []
+unix-zfs = []
+
+[dependencies]
+# Cloud storage backend dependencies (optional)
+aws-config = { version = "0.56", optional = true }
+aws-sdk-s3 = { version = "0.34", optional = true }
+azure_core = { version = "0.20", optional = true }
+azure_storage = { version = "0.20", optional = true }
+azure_storage_blobs = { version = "0.20", optional = true, features = ["azurite_workaround"] }
+google-cloud-storage = { version = "0.11", optional = true }
+backblaze-b2 = { version = "0.1", optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+toml = "0.8"
+directories = "5.0"
+tracing = "0.1"
+tokio = { version = "1.32", features = ["full", "test-util", "macros"] }
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8"
+cron = "0.12"
+flate2 = "1.0"
+zstd = "0.13"
+lz4 = "1.24"
+brotli = "3.3"
+walkdir = "2.4"
+log = "0.4"
+uuid = { version = "1.4", features = ["v4", "serde"] }
+futures = "0.3"
+sys-info = "0.9"
+futures-util = "0.3"
+url = "2.4"
+async-trait = "0.1"
+aes-gcm = { version = "0.10", features = ["std"] }
+argon2 = { version = "0.5", features = ["password-hash"] }
+sha2 = "0.10"
+zeroize = { version = "1.6", features = ["derive"] }
+base64 = "0.21"
+chacha20poly1305 = "0.10"
+md5 = "0.7"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+notify = "6.1"
+dirs = "5.0"
+fs2 = "0.4"
+getrandom = "0.2"
+
+[dev-dependencies]
+tempfile = "3.8"
+criterion = { version = "0.5", features = ["async_tokio"] }
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+test-case = "3.1"
+async-std = { version = "1.12", features = ["attributes"] }

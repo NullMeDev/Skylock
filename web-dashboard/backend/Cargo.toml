@@ -1,0 +1,76 @@
+[package]
+name = "skylock-web-dashboard"
+version = "0.1.0"
+edition = "2021"
+authors = ["Skylock Hybrid Team"]
+description = "Modern web dashboard backend for Skylock Hybrid backup system"
+license = "MIT"
+repository = "https://github.com/skylock/skylock-hybrid"
+
+[dependencies]
+# Async runtime and utilities
+tokio = { version = "1.35", features = ["full"] }
+futures-util = "0.3"
+
+# Web framework
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# HTTP client and utilities
+hyper = "1.0"
+reqwest = { version = "0.11", features = ["json"] }
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+uuid = { version = "1.6", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8"
+
+# Database (optional, for future persistence)
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"], optional = true }
+
+# Security
+jsonwebtoken = "9.2"
+argon2 = "0.5"
+ring = "0.17"
+
+# Configuration
+config = "0.14"
+dotenv = "0.15"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Metrics and monitoring
+prometheus = "0.13"
+sysinfo = "0.30"
+
+# Development dependencies
+[dev-dependencies]
+tokio-test = "0.4"
+http-body-util = "0.1"
+tower = { version = "0.4", features = ["util"] }
+
+[features]
+default = []
+database = ["sqlx"]
+metrics = ["prometheus"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+debug = true
+opt-level = 0

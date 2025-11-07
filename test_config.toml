@@ -1,0 +1,22 @@
+data_dir = "/home/null/.local/share/skylock-hybrid"
+
+[syncthing]
+api_key = "your-syncthing-api-key"
+api_url = "http://localhost:8384"
+folders = []
+
+[hetzner]
+endpoint = "https://test-storage.your-server.de"
+username = "test-user"
+password = "test-pass"
+encryption_key = "test-encryption-key"
+
+[backup]
+vss_enabled = true
+schedule = "0 2 * * *"
+retention_days = 30
+backup_paths = []
+
+[ui]
+always_prompt_deletions = true
+notification_enabled = true

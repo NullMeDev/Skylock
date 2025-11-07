@@ -1,0 +1,31 @@
+# Default configuration for Skylock
+# Copy this to ~/.config/skylock-hybrid/config.toml and customize with your credentials
+[syncthing]
+api_key = "your-syncthing-api-key-here"
+api_url = "http://localhost:8384"
+folders = [
+    "/path/to/folder1",
+    "/path/to/folder2"
+]
+
+[hetzner]
+endpoint = "uXXXXXX.your-storagebox.de"
+username = "uXXXXXX"
+webdav_path = "/backup"
+port = 23
+api_key = "your-hetzner-storage-box-password-here"
+protocol = "sftp"  # Can be "sftp" or "webdav"
+sftp_path = "/backup"
+
+[backup]
+vss_enabled = true
+schedule = "0 0 * * *"  # Daily at midnight
+retention_days = 30
+backup_paths = [
+    "/path/to/backup1",
+    "/path/to/backup2"
+]
+
+[ui]
+always_prompt_deletions = true
+notification_enabled = true

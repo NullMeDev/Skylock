@@ -1,0 +1,497 @@
+use chrono::{DateTime, Utc};
+use std::{error::Error as StdError, fmt, path::PathBuf};
+use uuid::Uuid;
+
+/// Error retry state indicating whether an error can be retried
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorRetryState {
+    /// Error can be retried
+    Retryable,
+    /// Error cannot be retried
+    NonRetryable,
+    /// Maximum retries exceeded
+    MaxRetrimpl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        None // Source is stored as string for cloning purposes
+    }
+}xceeded,
+}
+
+/// Security-related error types
+#[derive(Debug, Clone, PartialEq)]
+pub enum SecurityErrorType {
+    TokenExpired,
+    InvalidCredentials,
+    Unauthorized,
+}
+
+impl SecurityErrorType {
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::TokenExpired | Self::Unauthorized)
+    }
+}
+
+/// System-level error types
+#[derive(Debug, Clone, PartialEq)]
+pub enum SystemErrorType {
+    IoError,
+    OutOfMemory,
+    ConfigError,
+    OSError,
+    ThreadPanic,
+    MemoryError,
+    FileSystemError,
+    ProcessError,
+}
+
+impl SystemErrorType {
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::IoError)
+    }
+
+    pub fn is_critical(&self) -> bool {
+        matches!(self, Self::OutOfMemory)
+    }
+}
+
+/// Network-related error types
+#[derive(Debug, Clone, PartialEq)]
+pub enum NetworkErrorType {
+    ConnectionFailed,
+    Timeout,
+    InvalidAddress,
+}
+
+impl NetworkErrorType {
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::ConnectionFailed | Self::Timeout)
+    }
+}
+
+/// Storage operation error types
+#[derive(Debug, Clone, PartialEq)]
+pub enum StorageErrorType {
+    NotFound,
+    PermissionDenied,
+    AlreadyExists,
+}
+
+impl StorageErrorType {
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::PermissionDenied)
+    }
+
+    pub fn is_critical(&self) -> bool {
+        matches!(self, Self::NotFound)
+    }
+}
+
+/// Backup operation error types
+#[derive(Debug, Clone, PartialEq)]
+pub enum BackupErrorType {
+    BackupFailed,
+    VerificationFailed,
+    StorageFull,
+    SourceNotFound,
+    BackupCorrupted,
+}
+
+impl BackupErrorType {
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::BackupFailed | Self::StorageFull)
+    }
+
+    pub fn is_critical(&self) -> bool {
+        matches!(self, Self::BackupCorrupted)
+    }
+}
+
+/// Synchronization error types
+#[derive(Debug, Clone, PartialEq)]
+pub enum SyncErrorType {
+    SyncFailed,
+    VersionMismatch,
+    ConflictDetected,
+    RemoteUnavailable,
+    LocalUnavailable,
+}
+
+impl SyncErrorType {
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::SyncFailed | Self::RemoteUnavailable | Self::LocalUnavailable)
+    }
+}
+
+/// Configuration error types
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConfigErrorType {
+    InvalidConfiguration,
+    MissingRequiredField,
+    TypeMismatch,
+    ValidationFailed,
+    ParseError,
+}
+
+/// Resource-related error types
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResourceErrorType {
+    NotFound,
+    AlreadyExists,
+    InUse,
+    Locked,
+    OutOfResources,
+}
+
+/// The severity level of an error
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorSeverity {
+    /// Minor issue
+    Low,
+    /// Moderate issue
+    Medium,
+    /// Major issue
+    High,
+    /// Critical issue
+    Critical,
+}
+
+/// The current status of an error
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorStatus {
+    /// New error
+    New,
+    /// Error being retried
+    Retrying,
+    /// Error has been recovered
+    Recovered,
+    /// Error handling failed
+    Failed,
+    /// Manual intervention needed
+    Manual,
+}
+
+/// Error category defining the type of error
+#[derive(Debug, Clone, PartialEq)]
+pub enum ErrorCategory {
+    Security(SecurityErrorType),
+    System(SystemErrorType),
+    Network(NetworkErrorType),
+    Storage(StorageErrorType),
+    Backup(BackupErrorType),
+    Sync(SyncErrorType),
+    Config(ConfigErrorType),
+    Resource(ResourceErrorType),
+}
+
+impl ErrorCategory {
+    pub fn is_critical(&self) -> bool {
+        match self {
+            Self::Security(_) => true,
+            Self::System(e) => e.is_critical(),
+            Self::Storage(StorageErrorType::NotFound) => true,
+            Self::Backup(BackupErrorType::BackupCorrupted) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::Security(e) => e.is_retryable(),
+            Self::System(e) => e.is_retryable(),
+            Self::Network(e) => e.is_retryable(),
+            Self::Storage(e) => e.is_retryable(),
+            Self::Backup(e) => e.is_retryable(),
+            Self::Sync(e) => e.is_retryable(),
+            Self::Config(_) => false,
+            Self::Resource(e) => matches!(e, ResourceErrorType::Locked | ResourceErrorType::OutOfResources),
+        }
+    }
+
+    pub fn default_severity(&self) -> ErrorSeverity {
+        match self {
+            Self::Security(_) => ErrorSeverity::High,
+            Self::System(e) if e.is_critical() => ErrorSeverity::Critical,
+            Self::System(_) => ErrorSeverity::High,
+            Self::Network(_) => ErrorSeverity::Medium,
+            Self::Storage(StorageErrorType::NotFound) => ErrorSeverity::Critical,
+            Self::Storage(_) => ErrorSeverity::High,
+            Self::Backup(BackupErrorType::BackupCorrupted) => ErrorSeverity::Critical,
+            Self::Backup(_) => ErrorSeverity::High,
+            Self::Sync(_) => ErrorSeverity::Medium,
+            Self::Config(_) => ErrorSeverity::Medium,
+            Self::Resource(_) => ErrorSeverity::Low,
+        }
+    }
+}
+
+/// Main error structure for the Skylock system
+#[derive(Debug, Clone)]
+pub struct Error {
+    /// The category and type of error
+    pub category: ErrorCategory,
+    /// Error severity level
+    pub severity: ErrorSeverity,
+    /// Error message
+    pub message: String,
+    /// Additional error details
+    pub details: Option<String>,
+    /// Source error that caused this error
+    /// The source error stored as a string description
+    pub source: Option<String>,
+    /// Number of recovery attempts
+    pub recovery_attempts: u32,
+    /// Current error status
+    pub status: ErrorStatus,
+    /// When the error occurred
+    pub timestamp: DateTime<Utc>,
+    /// Component that generated the error
+    pub source_component: String,
+    /// Unique error ID
+    pub error_id: String,
+    /// Paths affected by this error
+    pub affected_paths: Vec<PathBuf>,
+    /// Whether this is a temporary error
+    pub is_transient: bool,
+    /// Current retry state
+    pub retry_state: ErrorRetryState,
+    /// Number of retry attempts made
+    pub retry_count: u32,
+}
+
+impl Error {
+    pub fn new<S: Into<String>>(
+        category: ErrorCategory,
+        severity: ErrorSeverity,
+        message: S,
+        source_component: S,
+    ) -> Self {
+        let is_retryable = category.is_retryable();
+        Self {
+            category,
+            severity,
+            message: message.into(),
+            details: None,
+            source: None,
+            recovery_attempts: 0,
+            status: ErrorStatus::New,
+            timestamp: Utc::now(),
+            source_component: source_component.into(),
+            error_id: Uuid::new_v4().to_string(),
+            affected_paths: Vec::new(),
+            is_transient: false,
+            retry_state: if is_retryable {
+                ErrorRetryState::Retryable
+            } else {
+                ErrorRetryState::NonRetryable
+            },
+            retry_count: 0,
+        }
+    }
+
+    // Helper constructor that uses default severity
+    pub fn with_default_severity<S: Into<String>>(
+        category: ErrorCategory,
+        message: S,
+        source_component: S,
+    ) -> Self {
+        let severity = category.default_severity();
+        Self::new(
+            category,
+            severity,
+            message,
+            source_component,
+        )
+    }
+
+    pub fn with_details<S: Into<String>>(mut self, details: S) -> Self {
+        self.details = Some(details.into());
+        self
+    }
+
+    pub fn with_source<E: StdError + Send + Sync + 'static>(mut self, source: E) -> Self {
+        self.source = Some(source.to_string());
+        self
+    }
+
+    pub fn with_paths<P: Into<PathBuf>>(mut self, paths: Vec<P>) -> Self {
+        self.affected_paths = paths.into_iter().map(Into::into).collect();
+        self
+    }
+
+    pub fn is_retryable(&self) -> bool {
+        self.is_transient ||
+        matches!(self.retry_state, ErrorRetryState::Retryable) ||
+        self.category.is_retryable()
+    }
+
+    pub fn is_critical(&self) -> bool {
+        matches!(self.severity, ErrorSeverity::Critical) ||
+        self.category.is_critical()
+    }
+
+    pub fn should_retry(&self) -> bool {
+        self.is_retryable() &&
+        !matches!(self.retry_state, ErrorRetryState::MaxRetriesExceeded) &&
+        self.retry_count < 5
+    }
+
+    pub fn increment_retry_count(&mut self) {
+        self.retry_count += 1;
+        if self.retry_count >= 5 {
+            self.retry_state = ErrorRetryState::MaxRetriesExceeded;
+        }
+        self.status = ErrorStatus::Retrying;
+    }
+
+    pub fn mark_non_retryable(&mut self) {
+        self.retry_state = ErrorRetryState::NonRetryable;
+        self.is_transient = false;
+    }
+
+    pub fn requires_user_action(&self) -> bool {
+        self.is_critical() ||
+        matches!(self.status, ErrorStatus::Manual) ||
+        matches!(self.retry_state, ErrorRetryState::MaxRetriesExceeded)
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "[{}] {} - {} (Severity: {}, Status: {}, Source: {})",
+            self.error_id,
+            self.category,
+            self.message,
+            self.severity,
+            self.status,
+            self.source_component
+        )?;
+        if let Some(details) = &self.details {
+            write!(f, "\nDetails: {}", details)?;
+        }
+        if !self.affected_paths.is_empty() {
+            write!(f, "\nAffected paths: {:?}", self.affected_paths)?;
+        }
+        if let Some(source) = &self.source {
+            write!(f, "\nCaused by: {}", source)?;
+        }
+        Ok(())
+    }
+}
+
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        None // Source is stored as string for cloning purposes
+    }
+    }
+}
+
+// Display implementations for all error types
+
+impl fmt::Display for ErrorCategory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Security(e) => write!(f, "Security error: {}", e),
+            Self::System(e) => write!(f, "System error: {}", e),
+            Self::Network(e) => write!(f, "Network error: {}", e),
+            Self::Storage(e) => write!(f, "Storage error: {}", e),
+            Self::Backup(e) => write!(f, "Backup error: {}", e),
+            Self::Sync(e) => write!(f, "Sync error: {}", e),
+            Self::Config(e) => write!(f, "Config error: {:?}", e),
+            Self::Resource(e) => write!(f, "Resource error: {:?}", e),
+        }
+    }
+}
+
+impl fmt::Display for ErrorSeverity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Low => write!(f, "Low"),
+            Self::Medium => write!(f, "Medium"),
+            Self::High => write!(f, "High"),
+            Self::Critical => write!(f, "Critical"),
+        }
+    }
+}
+
+impl fmt::Display for ErrorStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::New => write!(f, "New"),
+            Self::Retrying => write!(f, "Retrying"),
+            Self::Recovered => write!(f, "Recovered"),
+            Self::Failed => write!(f, "Failed"),
+            Self::Manual => write!(f, "Manual intervention required"),
+        }
+    }
+}
+
+impl fmt::Display for SecurityErrorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TokenExpired => write!(f, "Token expired"),
+            Self::InvalidCredentials => write!(f, "Invalid credentials"),
+            Self::Unauthorized => write!(f, "Unauthorized access"),
+        }
+    }
+}
+
+impl fmt::Display for SystemErrorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::IoError => write!(f, "I/O error"),
+            Self::OutOfMemory => write!(f, "Out of memory"),
+            Self::ConfigError => write!(f, "Configuration error"),
+            Self::OSError => write!(f, "Operating system error"),
+            Self::ThreadPanic => write!(f, "Thread panic occurred"),
+            Self::MemoryError => write!(f, "Memory allocation error"),
+            Self::FileSystemError => write!(f, "File system error"),
+            Self::ProcessError => write!(f, "Process error"),
+        }
+    }
+}
+
+impl fmt::Display for NetworkErrorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ConnectionFailed => write!(f, "Network connection failed"),
+            Self::Timeout => write!(f, "Network timeout"),
+            Self::InvalidAddress => write!(f, "Invalid network address"),
+        }
+    }
+}
+
+impl fmt::Display for StorageErrorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotFound => write!(f, "Storage item not found"),
+            Self::PermissionDenied => write!(f, "Storage permission denied"),
+            Self::AlreadyExists => write!(f, "Storage item already exists"),
+        }
+    }
+}
+
+impl fmt::Display for BackupErrorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BackupFailed => write!(f, "Backup operation failed"),
+            Self::VerificationFailed => write!(f, "Backup verification failed"),
+            Self::StorageFull => write!(f, "Backup storage is full"),
+            Self::SourceNotFound => write!(f, "Backup source not found"),
+            Self::BackupCorrupted => write!(f, "Backup data corrupted"),
+        }
+    }
+}
+
+impl fmt::Display for SyncErrorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SyncFailed => write!(f, "Synchronization failed"),
+            Self::VersionMismatch => write!(f, "Version mismatch"),
+            Self::ConflictDetected => write!(f, "Sync conflict detected"),
+            Self::RemoteUnavailable => write!(f, "Remote endpoint unavailable"),
+            Self::LocalUnavailable => write!(f, "Local endpoint unavailable"),
+        }
+    }
+}

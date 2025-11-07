@@ -1,0 +1,82 @@
+use std::error::Error;
+use std::fmt;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ErrorCategory {
+    Security,
+    System,
+    Network,
+    Storage,
+    Backup,
+    Sync,
+    Config,
+    Resource,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ErrorSeverity {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ErrorStatus {
+    New,
+    InProgress,
+    Resolved,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ErrorRetryState {
+    NoRetry,
+    CanRetry,
+    RetryInProgress,
+    RetryFailed,
+}
+
+// Error type enums for each category
+pub enum SecurityErrorType { /* ... */ }
+pub enum SystemErrorType { /* ... */ }
+pub enum NetworkErrorType { /* ... */ }
+pub enum StorageErrorType { /* ... */ }
+pub enum BackupErrorType { /* ... */ }
+pub enum SyncErrorType { /* ... */ }
+pub enum ConfigErrorType { /* ... */ }
+pub enum ResourceErrorType { /* ... */ }
+
+#[derive(Debug)]
+pub struct SkylockErrorInfo {
+    pub category: ErrorCategory,
+    pub severity: ErrorSeverity,
+    pub status: ErrorStatus,
+    pub retry_state: ErrorRetryState,
+    // ... other fields ...
+}
+
+#[derive(Debug)]
+pub enum SkylockError {
+    InitializationError(String),
+    AuthenticationError(String),
+    CommunicationError(String),
+    ValidationError(String),
+    SystemError(String),
+}
+
+impl Error for SkylockError {}
+
+impl fmt::Display for SkylockError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SkylockError::InitializationError(msg) => write!(f, "Initialization error: {}", msg),
+            SkylockError::AuthenticationError(msg) => write!(f, "Authentication error: {}", msg),
+            SkylockError::CommunicationError(msg) => write!(f, "Communication error: {}", msg),
+            SkylockError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
+            SkylockError::SystemError(msg) => write!(f, "System error: {}", msg),
+        }
+    }
+}
+
+pub type SkylockResult<T> = Result<T, SkylockError>;

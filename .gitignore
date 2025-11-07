@@ -1,0 +1,83 @@
+# Rust build artifacts
+/target/
+**/target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Sensitive configuration files - NEVER COMMIT THESE
+.env
+.env.*
+!.env.example
+config.toml
+!config.sample.toml
+*.key
+*.pem
+*.der
+*.p12
+*.pfx
+
+# SSH keys
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*.pub
+
+# Private data
+/data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Compiled binaries
+skylock
+skylock.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test and debug files
+test_*.txt
+debug_*.txt
+downloaded_*.txt
+
+# User-specific configuration
+config.debug.toml
+config.prod.toml
+config.performance.toml
+config.user.toml
+
+# Build logs
+*.log
+build_*.log

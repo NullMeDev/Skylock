@@ -1,0 +1,37 @@
+[package]
+name = "skylock-backup"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+skylock-core = { path = "../skylock-core" }
+skylock-hetzner = { path = "../skylock-hetzner" }
+tokio = { version = "1.32", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+futures = "0.3"
+async-trait = "0.1"
+thiserror = "1.0"
+indicatif = "0.17"
+
+# Encryption
+aes-gcm = "0.10"
+rand = "0.8"
+sha2 = "0.10"
+base64 = "0.22"
+
+# Compression
+zstd = "0.13"
+
+# Archive creation
+tar = "0.4"
+tempfile = "3.8"
+
+# Direct upload dependencies
+walkdir = "2.4"
+
+# Windows-only backup dependencies
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.48", features = ["Win32_Storage_Vss", "Win32_System_Com", "Win32_Foundation", "Win32_System_WindowsProgramming", "Win32_Storage_FileSystem"] }

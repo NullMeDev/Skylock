@@ -1,0 +1,131 @@
+#[cfg(test)]
+mod tests {
+    use std::{time::Duration, path::PathBuf, io};
+    use crate::error::{
+        Error, ErrorCategory, ErrorSeverity, ErrorStatus,
+        NetworkErrorType, SecurityErrorType, SystemErrorType, StorageErrorType,
+        ErrorHandlerRegistry, RetryHandler, handler::{CanHandle, HandleError},
+    };
+
+    #[tokio::test]
+    async fn test_error_handler_registry() {
+        let mut registry = ErrorHandlerRegistry::new();
+        let retry_handler = RetryHandler::new(3, Duration::from_millis(10));
+        registry.register(retry_handler);
+
+        let error = Error::new(
+            ErrorCategory::Network(NetworkErrorType::ConnectionFailed),
+            ErrorSeverity::High,
+            "Failed to connect to remote server",
+            "network_manager",
+        );
+
+        let result = registry.handle_error(&error).await;
+        assert!(result.is_err());
+
+        if let Err(final_error) = result {
+            assert!(!final_error.should_retry());
+            assert_eq!(final_error.retry_count, 3);
+            assert!(matches!(final_error.status, ErrorStatus::Failed));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_error_handler_non_retryable() {
+        let retry_handler = RetryHandler::new(3, Duration::from_millis(10));
+
+        let mut error = Error::new(
+            ErrorCategory::Network(NetworkErrorType::ConnectionFailed),
+            ErrorSeverity::High,
+            "Failed to connect to remote server",
+            "network_manager",
+        );
+
+        error.mark_non_retryable();
+
+        assert!(!retry_handler.can_handle(&error).await);
+
+        let result = retry_handler.handle_error(&error).await;
+        assert!(result.is_err());
+
+        if let Err(final_error) = result {
+            assert!(!final_error.should_retry());
+            assert_eq!(final_error.retry_count, 0);
+            assert!(matches!(final_error.status, ErrorStatus::Failed));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_retry_handler() {
+        let retry_handler = RetryHandler::new(3, Duration::from_millis(10));
+
+        let error = Error::new(
+            ErrorCategory::Network(NetworkErrorType::ConnectionFailed),
+            ErrorSeverity::High,
+            "Failed to connect to remote server",
+            "network_manager",
+        );
+
+        assert!(retry_handler.can_handle(&error).await);
+
+        let result = retry_handler.handle_error(&error).await;
+        assert!(result.is_err());
+
+        if let Err(final_error) = result {
+            assert!(!final_error.should_retry());
+            assert_eq!(final_error.retry_count, 3);
+            assert!(matches!(final_error.status, ErrorStatus::Failed));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_error_severity_and_retry_state() {
+        let error = Error::new(
+            ErrorCategory::Security(SecurityErrorType::TokenExpired),
+            ErrorSeverity::High,
+            "Security token has expired",
+            "auth_service",
+        );
+
+        assert!(error.is_retryable());
+        assert!(!error.is_critical());
+        assert_eq!(error.retry_count, 0);
+
+        let mut error = error;
+        error.increment_retry_count();
+        assert_eq!(error.retry_count, 1);
+        assert!(matches!(error.status, ErrorStatus::Retrying));
+    }
+
+    #[tokio::test]
+    async fn test_error_with_paths() {
+        let error = Error::new(
+            ErrorCategory::Storage(StorageErrorType::NotFound),
+            ErrorSeverity::Medium,
+            "File not found",
+            "storage_manager",
+        ).with_paths(vec![
+            PathBuf::from("/test/file1.txt"),
+            PathBuf::from("/test/file2.txt"),
+        ]);
+
+        assert_eq!(error.affected_paths.len(), 2);
+        assert!(error.affected_paths.contains(&PathBuf::from("/test/file1.txt")));
+    }
+
+    #[tokio::test]
+    async fn test_error_with_details_and_source() {
+        let io_error = io::Error::new(io::ErrorKind::Other, "underlying IO error");
+        let error = Error::new(
+            ErrorCategory::System(SystemErrorType::IoError),
+            ErrorSeverity::High,
+            "Failed to read file",
+            "file_system",
+        )
+        .with_details("Additional error context")
+        .with_source(io_error);
+
+        assert!(error.details.is_some());
+        assert!(error.source.is_some());
+    }
+}
