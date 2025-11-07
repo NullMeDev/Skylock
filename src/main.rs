@@ -10,6 +10,8 @@ use tracing::{info, error};
 mod platform;
 mod stubs;
 mod progress;
+mod notifications;
+mod cleanup;
 
 use skylock_core::Config;
 use stubs::*;
@@ -120,6 +122,14 @@ enum Commands {
         #[arg(short, long)]
         output: PathBuf,
     },
+    /// Preview backup contents before restoring
+    Preview {
+        /// Backup ID to preview
+        backup_id: String,
+        /// Check for file conflicts at target directory
+        #[arg(short, long)]
+        target: Option<PathBuf>,
+    },
     /// List available backups
     List {
         /// Show detailed information
@@ -140,6 +150,15 @@ enum Commands {
         /// Output path for config file
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+    /// Clean up old backups based on retention policy
+    Cleanup {
+        /// Dry run - show what would be deleted without deleting
+        #[arg(long)]
+        dry_run: bool,
+        /// Force deletion without confirmation
+        #[arg(short, long)]
+        force: bool,
     },
 }
 
@@ -169,6 +188,9 @@ async fn handle_command(command: Commands, config_path: Option<PathBuf>) -> Resu
         Commands::RestoreFile { backup_id, file_path, output } => {
             perform_restore_file(backup_id, file_path, output, config_path).await
         }
+        Commands::Preview { backup_id, target } => {
+            perform_preview(backup_id, target, config_path).await
+        }
         Commands::Restore { backup_id, target, paths } => {
             perform_restore(backup_id, target, paths, config_path).await
         }
@@ -180,6 +202,9 @@ async fn handle_command(command: Commands, config_path: Option<PathBuf>) -> Resu
         }
         Commands::Config { output } => {
             generate_default_config(output).await
+        }
+        Commands::Cleanup { dry_run, force } => {
+            cleanup::perform_cleanup(dry_run, force, config_path).await
         }
     }
 }
@@ -387,6 +412,9 @@ async fn perform_backup(paths: Vec<PathBuf>, name: Option<String>, force: bool, 
         println!("🔐 Using direct upload mode (per-file encryption, no archives)");
         println!();
         
+        // Send notification that backup started
+        let _ = notifications::notify_backup_started(backup_paths.len());
+        
         // Create encryption manager
         let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
             .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
@@ -422,11 +450,24 @@ async fn perform_backup(paths: Vec<PathBuf>, name: Option<String>, force: bool, 
                     println!("   🚀 Transfer rate: {}/s", rate_formatted.bright_magenta());
                 }
                 
+                // Send success notification
+                let size_mb = manifest.total_size as f64 / 1024.0 / 1024.0;
+                let _ = notifications::notify_backup_completed(
+                    manifest.file_count,
+                    size_mb,
+                    duration.as_secs()
+                );
+                
                 return Ok(());
             }
             Err(e) => {
+                let error_msg = e.to_string();
                 ErrorHandler::print_error("Backup Failed", &format!("Operation failed after {}", ErrorHandler::format_duration(start_time.elapsed())));
                 ErrorHandler::print_detailed_error(&anyhow::anyhow!(e));
+                
+                // Send failure notification
+                let _ = notifications::notify_backup_failed(&error_msg);
+                
                 return Err(anyhow::anyhow!("Backup operation failed"));
             }
         }
@@ -539,36 +580,23 @@ async fn perform_restore_file(backup_id: String, file_path: String, output: Path
     }
 }
 
-async fn perform_restore(backup_id: String, target: Option<PathBuf>, paths: Vec<PathBuf>, config_path: Option<PathBuf>) -> Result<()> {
-    println!("📤 Starting restore operation...");
-    println!("🆔 Backup ID: {}", backup_id);
+async fn perform_preview(backup_id: String, target: Option<PathBuf>, config_path: Option<PathBuf>) -> Result<()> {
+    use progress::ErrorHandler;
+    use colored::*;
     
-    let target_path = target.unwrap_or_else(|| {
-        PathBuf::from(format!("restore_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S")))
-    });
-    println!("📂 Restore target: {}", target_path.display());
-    
-    if !paths.is_empty() {
-        println!("📁 Restoring specific paths:");
-        for path in &paths {
-            println!("  - {}", path.display());
-        }
-        println!("⚠️  Selective restore not yet implemented - will restore entire backup");
-    } else {
-        println!("📁 Restoring entire backup");
-    }
+    ErrorHandler::print_info("Preview Backup", &format!("Loading backup: {}", backup_id.bright_green()));
     
     // Load configuration
-    let config = match Config::load(None) {
+    let config = match Config::load(config_path) {
         Ok(config) => config,
         Err(e) => {
-            println!("❌ Failed to load configuration: {}", e);
-            return Err(anyhow::anyhow!("Configuration required for restore operation"));
+            ErrorHandler::print_error("Configuration Error", &e.to_string());
+            return Err(anyhow::anyhow!("Configuration required"));
         }
     };
     
     if config.hetzner.username == "your-username" {
-        println!("❌ Hetzner credentials not configured");
+        ErrorHandler::print_error("Credentials Error", "Hetzner credentials not configured");
         return Err(anyhow::anyhow!("Hetzner credentials required"));
     }
     
@@ -584,24 +612,141 @@ async fn perform_restore(backup_id: String, target: Option<PathBuf>, paths: Vec<
     let hetzner_client = match skylock_hetzner::HetznerClient::new(hetzner_config) {
         Ok(client) => client,
         Err(e) => {
-            println!("❌ Failed to create Hetzner client: {}", e);
-            return Err(anyhow::anyhow!("Failed to initialize Hetzner client: {}", e));
+            ErrorHandler::print_error("Client Error", &e.to_string());
+            return Err(anyhow::anyhow!("Failed to initialize Hetzner client"));
         }
     };
     
-    // Initialize backup manager for restore
-    let backup_manager = skylock_backup::BackupManager::new(config, hetzner_client);
+    // Create encryption manager
+    let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
+        .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
     
-    // Perform restore
-    println!("🚀 Starting restore process...");
-    match backup_manager.restore_backup(&backup_id, &target_path).await {
-        Ok(_) => {
-            println!("✅ Restore completed successfully!");
-            println!("📂 Files restored to: {}", target_path.display());
+    // Create direct upload backup manager
+    let direct_backup = skylock_backup::DirectUploadBackup::new(config, hetzner_client, encryption);
+    
+    // Show preview
+    direct_backup.preview_backup(&backup_id).await?;
+    
+    // Check for conflicts if target specified
+    if let Some(target_path) = target {
+        println!("{}", "Checking for file conflicts...".bright_yellow());
+        let conflicts = direct_backup.check_restore_conflicts(&backup_id, &target_path).await?;
+        
+        if !conflicts.is_empty() {
+            println!();
+            ErrorHandler::print_warning("File Conflicts Detected", &format!("{} files already exist", conflicts.len()));
+            println!();
+            println!("   The following files will be overwritten:");
+            for (i, path) in conflicts.iter().take(10).enumerate() {
+                println!("   {}. {}", i + 1, path.display());
+            }
+            if conflicts.len() > 10 {
+                println!("   ... and {} more", conflicts.len() - 10);
+            }
+            println!();
+            ErrorHandler::suggest_solution("Use --force to overwrite, or choose a different target directory");
+        } else {
+            println!();
+            println!("{}", "✅ No conflicts - safe to restore".bright_green());
+        }
+    }
+    
+    Ok(())
+}
+
+async fn perform_restore(backup_id: String, target: Option<PathBuf>, paths: Vec<PathBuf>, config_path: Option<PathBuf>) -> Result<()> {
+    use progress::{ProgressReporter, ErrorHandler};
+    use colored::*;
+    use std::time::Instant;
+    
+    let start_time = Instant::now();
+    let progress = ProgressReporter::new();
+    
+    ErrorHandler::print_info("Restore Operation", &format!("Backup ID: {}", backup_id.bright_green()));
+    
+    let target_path = target.unwrap_or_else(|| {
+        PathBuf::from(format!("restore_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S")))
+    });
+    println!("   📂 Target: {}", target_path.display());
+    
+    if !paths.is_empty() {
+        ErrorHandler::print_warning("Selective Restore", "Specific path selection not yet implemented");
+        println!("   Will restore entire backup");
+    }
+    println!();
+    
+    // Load configuration
+    let config_spinner = progress.create_spinner("Loading configuration...");
+    let config = match Config::load(config_path) {
+        Ok(config) => {
+            progress.finish_with_message(&config_spinner, "Configuration loaded");
+            config
         }
         Err(e) => {
-            println!("❌ Restore failed: {}", e);
-            return Err(anyhow::anyhow!("Restore operation failed: {}", e));
+            progress.finish_with_message(&config_spinner, "Configuration failed");
+            ErrorHandler::print_error("Configuration Error", &e.to_string());
+            return Err(anyhow::anyhow!("Configuration required"));
+        }
+    };
+    
+    if config.hetzner.username == "your-username" {
+        ErrorHandler::print_error("Credentials Error", "Hetzner credentials not configured");
+        return Err(anyhow::anyhow!("Hetzner credentials required"));
+    }
+    
+    // Create Hetzner client
+    let client_spinner = progress.create_spinner("Connecting to Hetzner Storage Box...");
+    let hetzner_config = skylock_hetzner::HetznerConfig {
+        endpoint: config.hetzner.endpoint.clone(),
+        username: config.hetzner.username.clone(),
+        password: config.hetzner.password.clone(),
+        api_token: config.hetzner.encryption_key.clone(),
+        encryption_key: config.hetzner.encryption_key.clone(),
+    };
+    
+    let hetzner_client = match skylock_hetzner::HetznerClient::new(hetzner_config) {
+        Ok(client) => {
+            progress.finish_with_message(&client_spinner, "Connected to storage");
+            client
+        }
+        Err(e) => {
+            progress.finish_with_message(&client_spinner, "Connection failed");
+            ErrorHandler::print_error("Client Error", &e.to_string());
+            return Err(anyhow::anyhow!("Failed to initialize Hetzner client"));
+        }
+    };
+    
+    // Create encryption manager
+    let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
+        .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
+    
+    // Create direct upload backup manager
+    let direct_backup = skylock_backup::DirectUploadBackup::new(config, hetzner_client, encryption);
+    
+    // Send notification that restore started
+    let _ = notifications::notify_restore_started(&backup_id);
+    
+    // Perform restore
+    println!();
+    match direct_backup.restore_backup(&backup_id, &target_path).await {
+        Ok(_) => {
+            let duration = start_time.elapsed();
+            println!();
+            ErrorHandler::print_success("Restore Complete!", &format!("Files restored to {}", target_path.display()));
+            println!("   ⏱️  Duration: {}", ErrorHandler::format_duration(duration).bright_yellow());
+            
+            // Send success notification (we don't know exact file count without parsing manifest again)
+            let _ = notifications::notify_restore_completed(0, duration.as_secs());
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            ErrorHandler::print_error("Restore Failed", &format!("After {}", ErrorHandler::format_duration(start_time.elapsed())));
+            ErrorHandler::print_detailed_error(&anyhow::anyhow!(e));
+            
+            // Send failure notification
+            let _ = notifications::notify_restore_failed(&error_msg);
+            
+            return Err(anyhow::anyhow!("Restore operation failed"));
         }
     }
     

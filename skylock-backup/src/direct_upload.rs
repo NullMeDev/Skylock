@@ -41,7 +41,7 @@ pub struct FileEntry {
     pub timestamp: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupManifest {
     /// Unique backup ID (e.g., "20251023_211045")
     pub backup_id: String,
@@ -479,32 +479,91 @@ impl DirectUploadBackup {
         Ok(manifest)
     }
 
-    /// Restore entire backup
+    /// Restore entire backup with progress tracking
     pub async fn restore_backup(&self, backup_id: &str, target_dir: &Path) -> Result<()> {
+        use indicatif::{ProgressBar, ProgressStyle, MultiProgress};
+        use std::time::Duration;
+        
         println!("🔄 Restoring backup: {}", backup_id);
+        println!();
         
         // Download manifest
         let manifest_path = PathBuf::from(format!("/skylock/backups/{}/manifest.json", backup_id));
         let manifest = self.download_manifest(&manifest_path).await?;
         
-        println!("   📦 {} files to restore", manifest.files.len());
+        println!("   📦 Files to restore: {}", manifest.files.len());
+        println!("   📊 Total size: {} bytes", manifest.total_size);
+        println!("   📅 Backup date: {}", manifest.timestamp.format("%Y-%m-%d %H:%M:%S UTC"));
         println!();
         
-        // Restore files
+        // Create progress bars
+        let multi = MultiProgress::new();
+        
+        let overall_pb = multi.add(ProgressBar::new(manifest.files.len() as u64));
+        overall_pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{msg}\n{bar:40.cyan/blue} {pos}/{len} files ({percent}%) ETA: {eta}")
+                .unwrap()
+                .progress_chars("█▓▒░ ")
+        );
+        overall_pb.set_message("📦 Overall Progress");
+        
+        let file_pb = multi.add(ProgressBar::new(100));
+        file_pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} {msg}\n{bar:40.green/blue} {bytes}/{total_bytes} ({bytes_per_sec}) ETA: {eta}")
+                .unwrap()
+                .progress_chars("█▓▒░ ")
+                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+        );
+        file_pb.enable_steady_tick(Duration::from_millis(100));
+        
+        let mut restored_count = 0;
+        let mut failed_count = 0;
+        
+        // Restore files with progress
         for entry in &manifest.files {
-            self.restore_single_file(entry, target_dir).await?;
+            file_pb.set_message(format!("⬇️  Restoring: {}", entry.local_path.display()));
+            file_pb.set_length(entry.size);
+            file_pb.set_position(0);
+            
+            match self.restore_single_file_with_progress(entry, target_dir, file_pb.clone()).await {
+                Ok(_) => {
+                    restored_count += 1;
+                    overall_pb.inc(1);
+                }
+                Err(e) => {
+                    failed_count += 1;
+                    multi.println(format!("⚠️  Failed to restore {}: {}", entry.local_path.display(), e)).unwrap();
+                    overall_pb.inc(1);
+                }
+            }
+            
+            file_pb.finish_and_clear();
         }
         
+        overall_pb.finish_with_message(format!(
+            "✅ Restore complete: {} files restored, {} failed",
+            restored_count,
+            failed_count
+        ));
+        
         println!();
-        println!("✅ Restore complete");
+        
+        if failed_count > 0 {
+            return Err(SkylockError::Backup(format!("{} files failed to restore", failed_count)));
+        }
         
         Ok(())
     }
 
-    /// Restore a single file
-    async fn restore_single_file(&self, entry: &FileEntry, target_dir: &Path) -> Result<()> {
-        println!("  ⬇️  {}", entry.local_path.display());
-        
+    /// Restore a single file with progress and integrity verification
+    async fn restore_single_file_with_progress(
+        &self,
+        entry: &FileEntry,
+        target_dir: &Path,
+        progress: ProgressBar,
+    ) -> Result<()> {
         // Download encrypted file
         let temp_encrypted = tempfile::NamedTempFile::new()
             .map_err(|e| SkylockError::Backup(format!("Temp file failed: {}", e)))?;
@@ -513,10 +572,12 @@ impl DirectUploadBackup {
             &PathBuf::from(&entry.remote_path),
             &temp_encrypted.path().to_path_buf()
         ).await?;
+        progress.set_position(entry.size / 3); // 33% for download
         
         // Read and decrypt
         let encrypted_data = tokio::fs::read(temp_encrypted.path()).await?;
         let decrypted_data = self.encryption.decrypt(&encrypted_data)?;
+        progress.set_position(entry.size * 2 / 3); // 66% for decryption
         
         // Decompress if needed
         let final_data = if entry.compressed {
@@ -525,6 +586,20 @@ impl DirectUploadBackup {
         } else {
             decrypted_data
         };
+        
+        // Verify integrity by comparing hash
+        let mut hasher = Sha256::new();
+        hasher.update(&final_data);
+        let restored_hash = format!("{:x}", hasher.finalize());
+        
+        if restored_hash != entry.hash {
+            return Err(SkylockError::Backup(format!(
+                "Integrity check failed for {}: hash mismatch (expected {}, got {})",
+                entry.local_path.display(),
+                entry.hash,
+                restored_hash
+            )));
+        }
         
         // Write to target
         let target_path = target_dir.join(
@@ -536,10 +611,117 @@ impl DirectUploadBackup {
         }
         
         tokio::fs::write(&target_path, final_data).await?;
+        progress.set_position(entry.size); // 100% complete
         
         Ok(())
     }
+    
+    /// Restore a single file (legacy without progress)
+    async fn restore_single_file(&self, entry: &FileEntry, target_dir: &Path) -> Result<()> {
+        use indicatif::{ProgressBar, ProgressStyle};
+        
+        let pb = ProgressBar::new(entry.size);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} {msg} {bar:40.green/blue} {percent}%")
+                .unwrap()
+                .progress_chars("█▓▒░ ")
+        );
+        pb.set_message(format!("Restoring {}", entry.local_path.display()));
+        
+        let result = self.restore_single_file_with_progress(entry, target_dir, pb.clone()).await;
+        pb.finish_and_clear();
+        result
+    }
 
+    /// Preview backup contents before restoring
+    pub async fn preview_backup(&self, backup_id: &str) -> Result<()> {
+        // Download manifest
+        let manifest_path = PathBuf::from(format!("/skylock/backups/{}/manifest.json", backup_id));
+        let manifest = self.download_manifest(&manifest_path).await?;
+        
+        println!();
+        println!("{}", "==========================================================================");
+        println!("🔍 Backup Preview: {}", backup_id);
+        println!("{}", "==========================================================================");
+        println!();
+        
+        println!("📊 Backup Information:");
+        println!("   📅 Date: {}", manifest.timestamp.format("%Y-%m-%d %H:%M:%S UTC"));
+        println!("   📦 Files: {}", manifest.file_count);
+        println!("   💾 Size: {} bytes ({:.2} MB)", 
+            manifest.total_size,
+            (manifest.total_size as f64 / 1024.0 / 1024.0));
+        println!();
+        
+        println!("📁 Files to be restored:");
+        
+        // Group files by directory
+        use std::collections::BTreeMap;
+        let mut by_dir: BTreeMap<String, Vec<&FileEntry>> = BTreeMap::new();
+        
+        for entry in &manifest.files {
+            let dir = entry.local_path.parent()
+                .and_then(|p| p.to_str())
+                .unwrap_or("/")
+                .to_string();
+            by_dir.entry(dir).or_insert_with(Vec::new).push(entry);
+        }
+        
+        for (dir, files) in by_dir.iter() {
+            println!();
+            println!("   📂 {}", dir);
+            for file in files {
+                let size_str = if file.size > 1024 * 1024 {
+                    format!("{:.2} MB", file.size as f64 / 1024.0 / 1024.0)
+                } else if file.size > 1024 {
+                    format!("{:.2} KB", file.size as f64 / 1024.0)
+                } else {
+                    format!("{} B", file.size)
+                };
+                
+                let status = if file.compressed { "🗃️" } else { "  " };
+                let encrypted = if file.encrypted { "🔒" } else { "  " };
+                
+                println!("      {} {} {} ({}, {})",
+                    status,
+                    encrypted,
+                    file.local_path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown"),
+                    size_str,
+                    file.timestamp.format("%Y-%m-%d %H:%M")
+                );
+            }
+        }
+        
+        println!();
+        println!("{}", "==========================================================================");
+        println!();
+        
+        Ok(())
+    }
+    
+    /// Check for conflicts before restore
+    pub async fn check_restore_conflicts(&self, backup_id: &str, target_dir: &Path) -> Result<Vec<PathBuf>> {
+        let manifest_path = PathBuf::from(format!("/skylock/backups/{}/manifest.json", backup_id));
+        let manifest = self.download_manifest(&manifest_path).await?;
+        
+        let mut conflicts = Vec::new();
+        
+        for entry in &manifest.files {
+            let target_path = target_dir.join(
+                entry.local_path.strip_prefix("/").unwrap_or(&entry.local_path)
+            );
+            
+            if target_path.exists() {
+                conflicts.push(target_path);
+            }
+        }
+        
+        Ok(conflicts)
+    }
+    
     /// Restore a single file by path
     pub async fn restore_file(
         &self,
@@ -571,6 +753,39 @@ impl DirectUploadBackup {
         tokio::fs::copy(&restored_file, output).await?;
         
         println!("✅ File restored to: {}", output.display());
+        
+        Ok(())
+    }
+    
+    /// Delete a backup by ID
+    pub async fn delete_backup(&self, backup_id: &str) -> Result<()> {
+        let backup_dir = format!("/skylock/backups/{}", backup_id);
+        
+        // Download manifest to know what files to delete
+        let manifest_path = PathBuf::from(format!("/skylock/backups/{}/manifest.json", backup_id));
+        let manifest = match self.download_manifest(&manifest_path).await {
+            Ok(m) => m,
+            Err(_) => {
+                // If manifest doesn't exist, still try to delete the directory
+                return Err(SkylockError::Backup(format!(
+                    "Cannot delete backup {}: manifest not found",
+                    backup_id
+                )));
+            }
+        };
+        
+        // Delete all files in the backup
+        for entry in &manifest.files {
+            let file_path = PathBuf::from(&entry.remote_path);
+            // Attempt to delete, but don't fail if file doesn't exist
+            let _ = self.hetzner.delete_file(&file_path).await;
+        }
+        
+        // Delete manifest
+        let _ = self.hetzner.delete_file(&manifest_path).await;
+        
+        // Note: WebDAV doesn't have a direct directory delete, files are deleted individually
+        // The directory will be empty after all files are deleted
         
         Ok(())
     }

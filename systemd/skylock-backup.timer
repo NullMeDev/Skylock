@@ -1,0 +1,21 @@
+[Unit]
+Description=Skylock Automated Backup Timer
+Documentation=https://github.com/NullMeDev/Skylock
+Requires=skylock-backup.service
+
+[Timer]
+# Run daily at 2:00 AM
+OnCalendar=daily
+OnCalendar=*-*-* 02:00:00
+
+# Run 15 minutes after boot if missed
+Persistent=true
+
+# Randomize start time by up to 10 minutes to avoid thundering herd
+RandomizedDelaySec=10min
+
+# If the system was suspended, run immediately after resume if missed
+WakeSystem=false
+
+[Install]
+WantedBy=timers.target

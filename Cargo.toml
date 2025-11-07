@@ -1,6 +1,6 @@
 [package]
 name = "skylock-hybrid"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
 rust-version = "1.70"
 resolver = "2"
@@ -111,6 +111,7 @@ windows = { version = "0.61.3", features = ["Win32_Storage_Vss", "Win32_System_C
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.27", features = ["user"] }
+notify-rust = "4.11"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

@@ -1,0 +1,27 @@
+[Unit]
+Description=Skylock Automated Backup
+Documentation=https://github.com/NullMeDev/Skylock
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/skylock backup --direct
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skylock-backup
+
+# Security hardening
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.config/skylock-hybrid %h/.local/share/skylock
+
+# Resource limits
+CPUQuota=50%
+MemoryMax=2G
+TasksMax=20
+
+[Install]
+WantedBy=default.target

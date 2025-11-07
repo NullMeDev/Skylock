@@ -1,6 +1,6 @@
 # Skylock
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/NullMeDev/Skylock/releases)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/NullMeDev/Skylock/releases)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](.github/workflows/ci.yml)
@@ -23,10 +23,12 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 **Backup Operations**
 - Direct upload mode: per-file streaming with parallel uploads
 - Archive mode: tar.zst.enc compressed archives (legacy)
-- Incremental backups with file-level deduplication
-- Backup manifest system with metadata tracking
+- File-level deduplication and metadata tracking
+- Backup manifest system with JSON metadata
 - Professional backup ID structure (backup_YYYYMMDD_HHMMSS)
 - Adaptive concurrency control to prevent system overload
+- Real-time progress bars with upload speed and ETA
+- Individual file and overall backup progress tracking
 
 **Storage Integration**
 - Hetzner Storage Box support via WebDAV (HTTPS)
@@ -48,19 +50,70 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - `test` - Test cloud storage connections
 - `config` - Configuration management commands
 
+**User Experience**
+- Structured JSON logging with automatic rotation (10MB max, 5 files)
+- Secure log sanitization (removes all sensitive data automatically)
+- Enhanced error messages with color-coded formatting
+- Contextual help and diagnostic commands for common errors
+- Actionable troubleshooting suggestions
+- Pre-commit hooks to prevent secret leaks
+
 **Cross-Platform**
 - Linux support (primary platform)
 - Windows support (via platform-specific modules)
 - macOS support (via platform-specific modules)
 
-### In Progress
+### Recently Completed (v0.1.1)
 
-- Real-time file system monitoring and change detection
-- Automated backup scheduling with cron expressions
-- Web-based management interface
-- Backup verification and integrity checking
+- ✅ Structured logging system with rotation and sanitization
+- ✅ Real-time progress bars for file uploads
+- ✅ Enhanced error messages with troubleshooting steps
+- ✅ Security incident handling and prevention
+- ✅ Pre-commit secret scanning
+
+### Recently Completed
+
+**Restore Functionality (v0.2.0)**
+- ✅ Full backup restore with real-time progress tracking
+- ✅ Individual file restore from any backup
+- ✅ SHA-256 integrity verification for every restored file
+- ✅ Backup preview with detailed file listings
+- ✅ Conflict detection before restore
+- ✅ Automatic decryption and decompression
+- ✅ Progress bars for download, decrypt, and verify stages
+
+**Automated Scheduling & Notifications (v0.3.0)**
+- ✅ Systemd timer integration for automated backups
+- ✅ Flexible scheduling (daily, weekly, hourly, custom)
+- ✅ Desktop notifications for backup/restore events (Linux D-Bus)
+- ✅ Resource limits to prevent system slowdown
+- ✅ Security hardening with systemd sandboxing
+- ✅ Persistent timers (catch up missed backups)
+- ✅ Easy installation script included
+
+**Backup Retention Policies (v0.4.0)**
+- ✅ Configurable retention rules (keep last N, keep by age)
+- ✅ GFS (Grandfather-Father-Son) rotation support
+- ✅ Automated cleanup of old backups
+- ✅ Safety checks (minimum keep threshold)
+- ✅ Dry-run mode to preview deletions
+- ✅ Interactive confirmation for deletions
+- ✅ Detailed deletion summary and statistics
+
+### In Progress (Next Releases)
+
+**High Priority - Automation & Reliability**
+- System snapshot capability for full system recovery
+- Resume interrupted uploads
 - Bandwidth throttling and rate limiting
-- Progress bars and detailed upload statistics
+- Cron expression support for flexible scheduling
+
+**Medium Priority - Enhanced Functionality**
+- Real-time file system monitoring and change detection
+- Incremental backups (only changed files)
+- Backup diff/comparison tools
+- Parallel restore for faster recovery
+- System tray integration (GUI status indicator)
 
 ### Planned
 
@@ -232,6 +285,8 @@ Have an idea? Please [open an issue](https://github.com/NullMeDev/Skylock/issues
 - [SECURITY.md](SECURITY.md) - Security guide and best practices
 - [SECURITY_AUDIT.md](SECURITY_AUDIT.md) - Security audit details
 - [USAGE.md](USAGE.md) - Detailed usage guide
+- [RESTORE_GUIDE.md](RESTORE_GUIDE.md) - Complete restore and recovery guide
+- [SCHEDULING_GUIDE.md](SCHEDULING_GUIDE.md) - Automated scheduling and notifications guide
 
 ## License
 
