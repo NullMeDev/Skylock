@@ -21,6 +21,7 @@ use indicatif::{ProgressBar, ProgressStyle, MultiProgress, HumanBytes, HumanDura
 use crate::error::{Result, SkylockError};
 use crate::encryption::EncryptionManager;
 use crate::resume_state::ResumeState;
+use crate::bandwidth::BandwidthLimiter;
 use skylock_core::Config;
 use skylock_hetzner::HetznerClient;
 
@@ -64,20 +65,27 @@ pub struct DirectUploadBackup {
     encryption: Arc<EncryptionManager>,
     /// Maximum concurrent uploads (adaptive based on system)
     max_parallel: usize,
+    /// Optional bandwidth limiter (bytes per second, None = unlimited)
+    bandwidth_limiter: Option<Arc<BandwidthLimiter>>,
 }
 
 impl DirectUploadBackup {
-    pub fn new(config: Config, hetzner: HetznerClient, encryption: EncryptionManager) -> Self {
+    pub fn new(config: Config, hetzner: HetznerClient, encryption: EncryptionManager, bandwidth_limit: Option<u64>) -> Self {
         // Adaptive parallelism: Use 4 threads for normal systems, scale down if needed
         let max_parallel = std::thread::available_parallelism()
             .map(|n| n.get().min(4))  // Max 4 uploads at once
             .unwrap_or(2);  // Fallback to 2 if can't detect
+        
+        let bandwidth_limiter = bandwidth_limit.map(|limit| {
+            Arc::new(BandwidthLimiter::new(limit))
+        });
         
         Self {
             config: Arc::new(config),
             hetzner: Arc::new(hetzner),
             encryption: Arc::new(encryption),
             max_parallel,
+            bandwidth_limiter,
         }
     }
 
@@ -235,6 +243,7 @@ impl DirectUploadBackup {
             let backup_id = backup_id.to_string();
             let hetzner = self.hetzner.clone();
             let encryption = self.encryption.clone();
+            let bandwidth_limiter = self.bandwidth_limiter.clone();
             let overall_pb = overall_pb_clone.clone();
             let file_pb = file_pb_clone.clone();
             let file_name = local_path.file_name()
@@ -256,6 +265,7 @@ impl DirectUploadBackup {
                     size,
                     hetzner,
                     encryption,
+                    bandwidth_limiter,
                     file_pb.clone(),
                 ).await;
                 
@@ -364,6 +374,7 @@ impl DirectUploadBackup {
             let backup_id = backup_id.to_string();
             let hetzner = self.hetzner.clone();
             let encryption = self.encryption.clone();
+            let bandwidth_limiter = self.bandwidth_limiter.clone();
             let overall_pb = overall_pb_clone.clone();
             let file_pb = file_pb_clone.clone();
             let resume_state_ref = resume_state_clone.clone();
@@ -387,6 +398,7 @@ impl DirectUploadBackup {
                     size,
                     hetzner,
                     encryption,
+                    bandwidth_limiter,
                     file_pb.clone(),
                 ).await;
                 
@@ -449,6 +461,7 @@ impl DirectUploadBackup {
         size: u64,
         hetzner: Arc<HetznerClient>,
         encryption: Arc<EncryptionManager>,
+        bandwidth_limiter: Option<Arc<BandwidthLimiter>>,
         progress: ProgressBar,
     ) -> Result<FileEntry> {
         // Calculate hash
@@ -489,6 +502,11 @@ impl DirectUploadBackup {
             if let Some(parent_str) = parent.to_str() {
                 let _ = Self::ensure_remote_directory_exists(&hetzner, parent_str).await;
             }
+        }
+        
+        // Apply bandwidth throttling if enabled
+        if let Some(ref limiter) = bandwidth_limiter {
+            limiter.consume(encrypted_data.len() as u64).await;
         }
         
         // Upload

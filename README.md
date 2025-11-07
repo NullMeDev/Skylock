@@ -24,6 +24,7 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - Direct upload mode: per-file streaming with parallel uploads
 - Archive mode: tar.zst.enc compressed archives (legacy)
 - Resume interrupted uploads: automatic state tracking and recovery
+- Bandwidth throttling: configurable upload speed limiting
 - File-level deduplication and metadata tracking
 - Backup manifest system with JSON metadata
 - Professional backup ID structure (backup_YYYYMMDD_HHMMSS)
@@ -104,8 +105,9 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 ### In Progress (Next Releases)
 
 **High Priority - Automation & Reliability**
+- ✅ Resume interrupted uploads (automatic state tracking)
+- ✅ Bandwidth throttling and rate limiting
 - System snapshot capability for full system recovery
-- Bandwidth throttling and rate limiting
 - Cron expression support for flexible scheduling
 
 **Medium Priority - Enhanced Functionality**
@@ -188,6 +190,9 @@ Edit `~/.config/skylock-hybrid/config.toml` with your Hetzner Storage Box creden
 ```bash
 # Create a backup
 skylock backup --direct /path/to/backup
+
+# Create a backup with bandwidth limit (1.5 MB/s)
+skylock backup --direct --max-speed 1.5M /path/to/backup
 
 # List backups
 skylock list

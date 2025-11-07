@@ -144,6 +144,9 @@ pub struct BackupConfig {
     pub schedule: String,
     pub retention_days: u32,
     pub backup_paths: Vec<PathBuf>,
+    /// Maximum upload speed limit (e.g., "1.5M", "500K", "0" for unlimited)
+    #[serde(default)]
+    pub max_speed_limit: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

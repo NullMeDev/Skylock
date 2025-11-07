@@ -171,13 +171,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Atomic state file updates prevent corruption
   - Automatic cleanup of old state files (>7 days)
   - Zero configuration required - works automatically
+- **Bandwidth Throttling**: Upload speed limiting to prevent network saturation
+  - Token bucket algorithm for smooth rate limiting
+  - Configurable via CLI flag (`--max-speed`) or config file
+  - Supports human-readable formats: "1.5M", "500K", "1024"
+  - Per-upload bandwidth control
+  - No throttling on restores (maximum speed for recovery)
+  - CLI example: `skylock backup --direct --max-speed 1.5M ~/Documents`
 
 ### Planned
 - Cron expression support for flexible scheduling
 - System tray integration (GUI)
 - System snapshot capability
-- Resume interrupted uploads
-- Bandwidth throttling
 - Real-time file system monitoring
 - Incremental backups
 - Parallel restore

@@ -63,8 +63,8 @@ pub async fn perform_cleanup(dry_run: bool, force: bool, config_path: Option<Pat
     let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
         .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
     
-    // Create direct upload backup manager
-    let direct_backup = skylock_backup::DirectUploadBackup::new(config.clone(), hetzner_client, encryption);
+    // Create direct upload backup manager (no bandwidth limit for cleanup)
+    let direct_backup = skylock_backup::DirectUploadBackup::new(config.clone(), hetzner_client, encryption, None);
     
     // List all backups
     let list_spinner = progress.create_spinner("Fetching backup list...");

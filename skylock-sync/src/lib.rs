@@ -26,10 +26,10 @@ impl SyncthingClient {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .map_err(|_| SkylockError::from(SyncErrorType::ServiceFailure))?;
+            .map_err(|e| Error::ServiceFailure(format!("Failed to create client: {}", e)))?;
 
         let api_url = Url::parse(api_url)
-            .map_err(|_| SkylockError::from(SyncErrorType::InvalidConfig))?;
+            .map_err(|e| Error::InvalidConfig(format!("Invalid API URL: {}", e)))?;
 
         Ok(Self {
             client,
@@ -40,26 +40,26 @@ impl SyncthingClient {
 
     pub async fn get_folders(&self) -> Result<Vec<FolderStatus>> {
         let url = self.api_url.join("/rest/config/folders")
-            .map_err(|_| SkylockError::from(SyncErrorType::InvalidConfig))?;
+            .map_err(|e| Error::InvalidConfig(format!("Invalid URL: {}", e)))?;
 
         let response = self.client
             .get(url)
             .header("X-API-Key", &self.api_key)
             .send()
             .await
-            .map_err(|e| SkylockError::Syncthing(format!("Network error: {}", e)))?;
+            .map_err(|e| Error::ServiceFailure(format!("Network error: {}", e)))?;
 
         if !response.status().is_success() {
-            return Err(SyncErrorType::ServiceFailure.into());
+            return Err(Error::ServiceFailure(format!("HTTP error: {}", response.status())));
         }
 
         response.json().await
-            .map_err(|_| SyncErrorType::ServiceFailure.into())
+            .map_err(|e| Error::ServiceFailure(format!("Failed to parse response: {}", e)))
     }
 
     pub async fn add_folder(&self, path: PathBuf, label: &str) -> Result<()> {
         let url = self.api_url.join("/rest/config/folders")
-            .map_err(|_| SkylockError::from(SyncErrorType::InvalidConfig))?;
+            .map_err(|e| Error::InvalidConfig(format!("Invalid URL: {}", e)))?;
 
         let folder_id = path.to_string_lossy().replace(':', "").replace('\\', "-");
 
@@ -91,10 +91,10 @@ impl SyncthingClient {
             .json(&config)
             .send()
             .await
-            .map_err(|e| SkylockError::Syncthing(format!("Failed to add folder: {}", e)))?;
+            .map_err(|e| Error::ServiceFailure(format!("Failed to add folder: {}", e)))?;
 
         if !response.status().is_success() {
-            return Err(SyncErrorType::ServiceFailure.into());
+            return Err(Error::ServiceFailure(format!("HTTP error: {}", response.status())));
         }
 
         Ok(())
@@ -102,17 +102,17 @@ impl SyncthingClient {
 
     pub async fn scan_folder(&self, folder_id: &str) -> Result<()> {
         let url = self.api_url.join(&format!("/rest/db/scan?folder={}", folder_id))
-            .map_err(|_| SkylockError::from(SyncErrorType::InvalidConfig))?;
+            .map_err(|e| Error::InvalidConfig(format!("Invalid URL: {}", e)))?;
 
         let response = self.client
             .post(url)
             .header("X-API-Key", &self.api_key)
             .send()
             .await
-            .map_err(|e| SkylockError::Syncthing(format!("Failed to scan folder: {}", e)))?;
+            .map_err(|e| Error::ServiceFailure(format!("Failed to scan folder: {}", e)))?;
 
         if !response.status().is_success() {
-            return Err(SkylockError::Syncthing(
+            return Err(Error::ServiceFailure(
                 format!("Failed to scan folder: {}", response.status())
             ));
         }
@@ -131,16 +131,16 @@ impl SyncthingClient {
             .header("X-API-Key", &self.api_key)
             .send()
             .await
-            .map_err(|e| SkylockError::Syncthing(format!("Failed to get events: {}", e)))?;
+            .map_err(|e| Error::ServiceFailure(format!("Failed to get events: {}", e)))?;
 
         if !response.status().is_success() {
-            return Err(SkylockError::Syncthing(
+            return Err(Error::ServiceFailure(
                 format!("Failed to get events: {}", response.status())
             ));
         }
 
         response.json().await
-            .map_err(|e| SkylockError::Syncthing(format!("Failed to parse events: {}", e)))
+            .map_err(|e| Error::ServiceFailure(format!("Failed to parse events: {}", e)))
     }
 }
 

@@ -101,6 +101,9 @@ enum Commands {
         /// Use direct upload mode (no archives, per-file encryption)
         #[arg(long)]
         direct: bool,
+        /// Maximum upload speed (e.g., "1.5M", "500K", "0" for unlimited)
+        #[arg(long)]
+        max_speed: Option<String>,
     },
     /// Restore from backup
     Restore {
@@ -182,8 +185,8 @@ async fn handle_command(command: Commands, config_path: Option<PathBuf>) -> Resu
         Commands::StoreCredentials { username, password } => {
             store_credentials_interactive(username, password).await
         }
-        Commands::Backup { paths, name, force, direct } => {
-            perform_backup(paths, name, force, direct, config_path).await
+        Commands::Backup { paths, name, force, direct, max_speed } => {
+            perform_backup(paths, name, force, direct, config_path, max_speed).await
         }
         Commands::RestoreFile { backup_id, file_path, output } => {
             perform_restore_file(backup_id, file_path, output, config_path).await
@@ -229,6 +232,7 @@ async fn generate_default_config(output: Option<PathBuf>) -> Result<()> {
             schedule: "0 2 * * *".to_string(), // Daily at 2 AM
             retention_days: 30,
             backup_paths: vec![],
+            max_speed_limit: None, // No bandwidth limit by default
         },
         ui: skylock_core::UiConfig {
             always_prompt_deletions: true,
@@ -293,7 +297,7 @@ async fn store_credentials_interactive(username: Option<String>, password: Optio
     Ok(())
 }
 
-async fn perform_backup(paths: Vec<PathBuf>, name: Option<String>, force: bool, direct: bool, config_path: Option<PathBuf>) -> Result<()> {
+async fn perform_backup(paths: Vec<PathBuf>, name: Option<String>, force: bool, direct: bool, config_path: Option<PathBuf>, max_speed: Option<String>) -> Result<()> {
     use progress::{ProgressReporter, ErrorHandler};
     use std::time::Instant;
     use colored::*;
@@ -419,11 +423,26 @@ async fn perform_backup(paths: Vec<PathBuf>, name: Option<String>, force: bool, 
         let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
             .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
         
+        // Parse bandwidth limit (CLI > config > unlimited)
+        let bandwidth_limit = max_speed
+            .or_else(|| config.backup.max_speed_limit.clone())
+            .and_then(|s| skylock_backup::parse_bandwidth_limit(&s).ok());
+        
+        if let Some(limit) = bandwidth_limit {
+            if limit > 0 {
+                // Create a temporary BandwidthLimiter to format the limit
+                let limiter = skylock_backup::BandwidthLimiter::new(limit);
+                let limit_formatted = limiter.format_limit();
+                println!("🚦 Bandwidth limit: {}", limit_formatted);
+            }
+        }
+        
         // Create direct upload backup
         let direct_backup = skylock_backup::DirectUploadBackup::new(
             backup_config,
             hetzner_client,
-            encryption
+            encryption,
+            bandwidth_limit
         );
         
         match direct_backup.create_backup(&backup_paths).await {
@@ -564,8 +583,8 @@ async fn perform_restore_file(backup_id: String, file_path: String, output: Path
     let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
         .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
     
-    // Create direct upload backup manager
-    let direct_backup = skylock_backup::DirectUploadBackup::new(config, hetzner_client, encryption);
+    // Create direct upload backup manager (no bandwidth limit for restores)
+    let direct_backup = skylock_backup::DirectUploadBackup::new(config, hetzner_client, encryption, None);
     
     // Restore file
     match direct_backup.restore_file(&backup_id, &file_path, &output).await {
@@ -621,8 +640,8 @@ async fn perform_preview(backup_id: String, target: Option<PathBuf>, config_path
     let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
         .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
     
-    // Create direct upload backup manager
-    let direct_backup = skylock_backup::DirectUploadBackup::new(config, hetzner_client, encryption);
+    // Create direct upload backup manager (no bandwidth limit for preview)
+    let direct_backup = skylock_backup::DirectUploadBackup::new(config, hetzner_client, encryption, None);
     
     // Show preview
     direct_backup.preview_backup(&backup_id).await?;
@@ -720,8 +739,8 @@ async fn perform_restore(backup_id: String, target: Option<PathBuf>, paths: Vec<
     let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
         .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
     
-    // Create direct upload backup manager
-    let direct_backup = skylock_backup::DirectUploadBackup::new(config, hetzner_client, encryption);
+    // Create direct upload backup manager (no bandwidth limit for restores)
+    let direct_backup = skylock_backup::DirectUploadBackup::new(config, hetzner_client, encryption, None);
     
     // Send notification that restore started
     let _ = notifications::notify_restore_started(&backup_id);
