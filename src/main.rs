@@ -12,6 +12,7 @@ mod stubs;
 mod progress;
 mod notifications;
 mod cleanup;
+mod scheduler;
 
 use skylock_core::Config;
 use stubs::*;
@@ -163,6 +164,14 @@ enum Commands {
         #[arg(short, long)]
         force: bool,
     },
+    /// Validate and test cron schedule expressions
+    Schedule {
+        /// Cron expression to validate (e.g., "0 2 * * *")
+        expression: Option<String>,
+        /// Show common schedule presets
+        #[arg(long)]
+        presets: bool,
+    },
 }
 
 #[derive(clap::ValueEnum, Clone)]
@@ -208,6 +217,9 @@ async fn handle_command(command: Commands, config_path: Option<PathBuf>) -> Resu
         }
         Commands::Cleanup { dry_run, force } => {
             cleanup::perform_cleanup(dry_run, force, config_path).await
+        }
+        Commands::Schedule { expression, presets } => {
+            test_schedule(expression, presets).await
         }
     }
 }
@@ -1053,6 +1065,119 @@ async fn test_encryption() -> Result<()> {
     }
     
     println!("✅ Encryption test passed");
+    Ok(())
+}
+
+async fn test_schedule(expression: Option<String>, show_presets: bool) -> Result<()> {
+    use colored::*;
+    
+    if show_presets {
+        println!("{}", "📅 Common Schedule Presets:".bright_blue().bold());
+        println!();
+        println!("   {:<30} {}", "Expression".bright_cyan(), "Description".bright_cyan());
+        println!("   {}", "─".repeat(70));
+        
+        let presets = vec![
+            (scheduler::presets::HOURLY, "Every hour"),
+            (scheduler::presets::EVERY_2_HOURS, "Every 2 hours"),
+            (scheduler::presets::EVERY_6_HOURS, "Every 6 hours"),
+            (scheduler::presets::EVERY_12_HOURS, "Every 12 hours"),
+            (scheduler::presets::DAILY_MIDNIGHT, "Daily at midnight"),
+            (scheduler::presets::DAILY_2AM, "Daily at 2 AM"),
+            (scheduler::presets::WEEKLY_SUNDAY, "Weekly on Sunday at 2 AM"),
+            (scheduler::presets::WEEKLY_MONDAY, "Weekly on Monday at 2 AM"),
+            (scheduler::presets::MONTHLY_1ST, "Monthly on the 1st at 2 AM"),
+            (scheduler::presets::EVERY_15_MIN, "Every 15 minutes"),
+            (scheduler::presets::EVERY_30_MIN, "Every 30 minutes"),
+        ];
+        
+        for (expr, desc) in presets {
+            println!("   {:<30} {}", expr, desc);
+            
+            if let Some(next) = scheduler::get_next_run(expr, chrono::Utc::now()) {
+                println!("   {:<30} {}", "", format!("Next: {}", next.format("%Y-%m-%d %H:%M UTC")).dimmed());
+            }
+        }
+        
+        println!();
+        println!("💡 Use these in your config file's [backup] section:");
+        println!("   schedule = \"{}\"", scheduler::presets::DAILY_2AM.bright_yellow());
+        
+        return Ok(());
+    }
+    
+    if let Some(expr) = expression {
+        println!("{}", "🔍 Validating Cron Expression:".bright_blue().bold());
+        println!();
+        println!("   Expression: {}", expr.bright_yellow());
+        
+        match scheduler::validate_cron_expression(&expr) {
+            Ok(_) => {
+                println!("   Status: {}", "✓ Valid".bright_green());
+                println!();
+                
+                println!("{}", "📋 Details:".bright_cyan());
+                println!("   Description: {}", scheduler::describe_schedule(&expr));
+                println!();
+                
+                println!("{}", "📅 Next 5 Scheduled Runs:".bright_cyan());
+                let now = chrono::Utc::now();
+                if let Ok(schedule) = scheduler::parse_cron_expression(&expr) {
+                    for (i, dt) in schedule.upcoming(chrono::Utc).take(5).enumerate() {
+                        let time_until = dt - now;
+                        let hours = time_until.num_hours();
+                        let days = time_until.num_days();
+                        
+                        let relative = if days > 0 {
+                            format!("(in {} days)", days)
+                        } else if hours > 0 {
+                            format!("(in {} hours)", hours)
+                        } else {
+                            format!("(in {} minutes)", time_until.num_minutes())
+                        };
+                        
+                        println!("   {}. {} {}", 
+                            i + 1, 
+                            dt.format("%Y-%m-%d %H:%M:%S UTC"),
+                            relative.dimmed()
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                println!("   Status: {}", "✗ Invalid".bright_red());
+                println!("   Error: {}", e);
+                println!();
+                println!("💡 {}", "Cron expression format:".bright_yellow());
+                println!("   * * * * * *");
+                println!("   │ │ │ │ │ └─ Day of week (0-7, Sunday = 0 or 7)");
+                println!("   │ │ │ │ └─── Month (1-12)");
+                println!("   │ │ │ └───── Day of month (1-31)");
+                println!("   │ │ └─────── Hour (0-23)");
+                println!("   │ └───────── Minute (0-59)");
+                println!("   └─────────── Second (0-59)");
+                println!();
+                println!("   Examples:");
+                println!("   0 0 2 * * *      - Daily at 2 AM");
+                println!("   0 */15 * * * *   - Every 15 minutes");
+                println!("   0 0 0 * * 0      - Weekly on Sunday at midnight");
+                println!("   0 0 0 1 * *      - Monthly on the 1st at midnight");
+                
+                return Err(anyhow::anyhow!("Invalid cron expression"));
+            }
+        }
+    } else {
+        println!("{}", "📅 Schedule Command".bright_blue().bold());
+        println!();
+        println!("Usage:");
+        println!("  skylock schedule <EXPRESSION>  # Validate a cron expression");
+        println!("  skylock schedule --presets     # Show common presets");
+        println!();
+        println!("Examples:");
+        println!("  skylock schedule \"0 0 2 * * *\"     # Daily at 2 AM");
+        println!("  skylock schedule \"0 */15 * * * *\"  # Every 15 minutes");
+    }
+    
     Ok(())
 }
 

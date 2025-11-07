@@ -19,12 +19,14 @@ sftp_path = "/backup"
 
 [backup]
 vss_enabled = true
-schedule = "0 0 * * *"  # Daily at midnight
+schedule = "0 0 2 * * *"  # Daily at 2 AM (6-field format: sec min hour day month weekday)
 retention_days = 30
 backup_paths = [
     "/path/to/backup1",
     "/path/to/backup2"
 ]
+# Optional: Bandwidth limit for uploads (e.g., "1.5M", "500K", or omit for unlimited)
+# max_speed_limit = "1.5M"
 
 [ui]
 always_prompt_deletions = true

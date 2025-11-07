@@ -178,9 +178,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Per-upload bandwidth control
   - No throttling on restores (maximum speed for recovery)
   - CLI example: `skylock backup --direct --max-speed 1.5M ~/Documents`
+- **Cron Expression Support**: Advanced scheduling with cron expressions
+  - 6-field cron format: second minute hour day month weekday
+  - `skylock schedule` command for validation and testing
+  - Built-in presets: HOURLY, DAILY_2AM, WEEKLY_SUNDAY, MONTHLY_1ST, etc.
+  - Human-readable schedule descriptions
+  - Shows next 5 scheduled runs with relative time
+  - Enhanced `should_run_backup()` with last_run tracking
+  - Full validation and error messages
+  - CLI examples:
+    - `skylock schedule "0 0 2 * * *"` - Validate and show next runs
+    - `skylock schedule --presets` - Show common presets
 
 ### Planned
-- Cron expression support for flexible scheduling
 - System tray integration (GUI)
 - System snapshot capability
 - Real-time file system monitoring
