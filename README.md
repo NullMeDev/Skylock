@@ -206,6 +206,11 @@ skylock restore <backup_id> --target /path/to/restore
 skylock diff backup_20251107_120000 backup_20251107_140000
 skylock diff <old_id> <new_id> --detailed  # Show detailed file list
 
+# Check what files have changed since last backup
+skylock changes                    # Show all changes
+skylock changes --summary          # Show summary only
+skylock changes /path/to/check     # Check specific paths
+
 # Test cron schedule expressions
 skylock schedule "0 0 2 * * *"     # Validate and show next runs
 skylock schedule --presets         # Show common presets

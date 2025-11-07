@@ -198,6 +198,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Supports filtering by change type (`--filter added,removed,modified,moved`)
   - Detailed mode (`--detailed`) shows individual file paths and size deltas
   - Net size change calculation
+- **File Change Tracking**: Track file modifications between backups
+  - `skylock changes` command to show changes since last backup
+  - Persistent file index with file metadata (path, size, mtime, hash)
+  - Detects added, removed, modified, and metadata-only changes
+  - SHA-256 hash-based content verification
+  - Automatic index save after successful backups
+  - Summary and detailed view modes (`--summary` flag)
+  - Helpful suggestions for next actions (e.g., "Run skylock backup --direct")
+  - Stored in `~/.local/share/skylock/indexes/`
+  - First backup warning for new users
+  - Change tracker module with comprehensive unit tests
   - 7 comprehensive unit tests covering all diff scenarios
   - CLI examples:
     - `skylock diff backup_20251107_120000 backup_20251107_140000` - Summary

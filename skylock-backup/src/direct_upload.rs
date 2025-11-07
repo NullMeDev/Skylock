@@ -22,6 +22,7 @@ use crate::error::{Result, SkylockError};
 use crate::encryption::EncryptionManager;
 use crate::resume_state::ResumeState;
 use crate::bandwidth::BandwidthLimiter;
+use crate::change_tracker::{ChangeTracker, FileIndex};
 use skylock_core::Config;
 use skylock_hetzner::HetznerClient;
 
@@ -196,6 +197,18 @@ impl DirectUploadBackup {
         
         // Clean up resume state file after successful completion
         ResumeState::delete(&backup_id).await?;
+        
+        // Save file index for change tracking
+        let index_dir = self.config.data_dir.join("indexes");
+        tokio::fs::create_dir_all(&index_dir).await?;
+        let tracker = ChangeTracker::new(index_dir);
+        
+        // Build and save index of backed up files
+        let file_index = FileIndex::build(paths)?;
+        if let Err(e) = tracker.save_index(&backup_id, &file_index).await {
+            eprintln!("⚠️  Warning: Failed to save file index: {}", e);
+            eprintln!("   Change tracking may not work correctly.");
+        }
         
         println!();
         println!("✅ Backup complete: {}", backup_id);

@@ -185,6 +185,14 @@ enum Commands {
         #[arg(short, long, value_delimiter = ',')]
         filter: Option<Vec<String>>,
     },
+    /// Show file changes since last backup
+    Changes {
+        /// Paths to check for changes (defaults to config backup_paths)
+        paths: Vec<PathBuf>,
+        /// Show only summary counts
+        #[arg(short, long)]
+        summary: bool,
+    },
 }
 
 #[derive(clap::ValueEnum, Clone)]
@@ -236,6 +244,9 @@ async fn handle_command(command: Commands, config_path: Option<PathBuf>) -> Resu
         }
         Commands::Diff { backup_id_old, backup_id_new, detailed, filter } => {
             perform_diff(backup_id_old, backup_id_new, detailed, filter, config_path).await
+        }
+        Commands::Changes { paths, summary } => {
+            show_file_changes(paths, summary, config_path).await
         }
     }
 }
@@ -1393,6 +1404,172 @@ async fn perform_diff(
     if !detailed && diff.total_changes() > 0 {
         println!();
         println!("💡 Use {} for detailed file listings", "--detailed".bright_yellow());
+    }
+    
+    Ok(())
+}
+
+async fn show_file_changes(
+    paths: Vec<PathBuf>,
+    summary_only: bool,
+    config_path: Option<PathBuf>,
+) -> Result<()> {
+    use progress::ErrorHandler;
+    use colored::*;
+    use skylock_backup::{ChangeTracker, ChangeType};
+    
+    ErrorHandler::print_info("File Change Detection", "Detecting changes since last backup");
+    
+    // Load configuration
+    let config = match Config::load(config_path) {
+        Ok(config) => config,
+        Err(e) => {
+            ErrorHandler::print_error("Configuration Error", &e.to_string());
+            ErrorHandler::suggest_solution("Run 'skylock config' to generate a configuration file");
+            return Err(anyhow::anyhow!("Configuration required"));
+        }
+    };
+    
+    // Use provided paths or fall back to config backup paths
+    let check_paths = if !paths.is_empty() {
+        paths
+    } else {
+        config.backup.backup_paths.clone()
+    };
+    
+    if check_paths.is_empty() {
+        ErrorHandler::print_error("No Paths", "No paths specified and none in config");
+        ErrorHandler::suggest_solution("Specify paths to check or add backup_paths to config");
+        return Err(anyhow::anyhow!("No paths to check for changes"));
+    }
+    
+    // Set up change tracker
+    let index_dir = config.data_dir.join("indexes");
+    tokio::fs::create_dir_all(&index_dir).await?;
+    let tracker = ChangeTracker::new(index_dir);
+    
+    // Check if there's a previous backup to compare against
+    if !tracker.has_latest_index().await {
+        println!();
+        println!("{}", "⚠️  No previous backup found".bright_yellow());
+        println!("   This appears to be the first backup.");
+        println!("   All files will be backed up.");
+        println!();
+        
+        // Count files that would be backed up
+        println!("📊 Scanning current files...");
+        let file_index = skylock_backup::FileIndex::build(&check_paths)
+            .map_err(|e| anyhow::anyhow!("Failed to scan files: {}", e))?;
+        
+        println!();
+        println!("   {} {} files would be backed up",
+            "+".bright_green().bold(),
+            file_index.file_count().to_string().bright_green()
+        );
+        println!();
+        println!("💡 Run {} to create your first backup", "skylock backup --direct".bright_yellow());
+        return Ok(());
+    }
+    
+    // Detect changes
+    println!("🔍 Detecting changes...");
+    let changes = tracker.detect_changes_since_last_backup(&check_paths).await
+        .map_err(|e| anyhow::anyhow!("Failed to detect changes: {}", e))?;
+    
+    if changes.is_empty() {
+        println!();
+        println!("{}", "✅ No changes detected".bright_green());
+        println!("   All files are up to date with last backup.");
+        return Ok(());
+    }
+    
+    // Count changes by type
+    let mut added_count = 0;
+    let mut removed_count = 0;
+    let mut modified_count = 0;
+    let mut metadata_count = 0;
+    
+    for change in &changes {
+        match change.change_type {
+            ChangeType::Added => added_count += 1,
+            ChangeType::Removed => removed_count += 1,
+            ChangeType::Modified => modified_count += 1,
+            ChangeType::MetadataChanged => metadata_count += 1,
+        }
+    }
+    
+    // Display summary
+    println!();
+    println!("{}", "📊 Change Summary".bright_blue().bold());
+    println!();
+    
+    if added_count > 0 {
+        println!("   {} {} files",
+            "+".bright_green().bold(),
+            added_count.to_string().bright_green()
+        );
+    }
+    
+    if removed_count > 0 {
+        println!("   {} {} files",
+            "-".bright_red().bold(),
+            removed_count.to_string().bright_red()
+        );
+    }
+    
+    if modified_count > 0 {
+        println!("   {} {} files",
+            "~".bright_yellow().bold(),
+            modified_count.to_string().bright_yellow()
+        );
+    }
+    
+    if metadata_count > 0 {
+        println!("   {} {} files (metadata only)",
+            "◦".dimmed(),
+            metadata_count.to_string().dimmed()
+        );
+    }
+    
+    println!();
+    println!("   {} {} total changes",
+        "Σ".bright_cyan(),
+        changes.len().to_string().bright_cyan()
+    );
+    
+    // Show detailed list if not summary-only
+    if !summary_only {
+        println!();
+        println!("{}", "Detailed Changes:".bright_cyan().bold());
+        println!();
+        
+        for change in &changes {
+            let (symbol, color): (String, fn(String) -> colored::ColoredString) = match change.change_type {
+                ChangeType::Added => ("+".to_string(), |s| s.bright_green()),
+                ChangeType::Removed => ("-".to_string(), |s| s.bright_red()),
+                ChangeType::Modified => ("~".to_string(), |s| s.bright_yellow()),
+                ChangeType::MetadataChanged => ("◦".to_string(), |s| s.dimmed()),
+            };
+            
+            let path_str = change.path.display().to_string();
+            println!("   {} {}", symbol, color(path_str));
+        }
+        
+        println!();
+        println!("💡 Use {} for summary only", "--summary".bright_yellow());
+    } else {
+        println!();
+        println!("💡 Run without {} to see detailed file list", "--summary".bright_yellow());
+    }
+    
+    // Suggest next action
+    let backup_count = added_count + modified_count;
+    if backup_count > 0 {
+        println!();
+        println!("💡 Run {} to backup {} changed files",
+            "skylock backup --direct".bright_yellow(),
+            backup_count.to_string().bright_cyan()
+        );
     }
     
     Ok(())
