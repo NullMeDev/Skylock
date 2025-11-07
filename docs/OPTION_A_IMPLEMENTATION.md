@@ -238,12 +238,12 @@ File: `docs/SECURITY_CHECKLIST.md`
 
 ## Success Criteria
 
-- [ ] Logs created at `~/.local/share/skylock/skylock.log`
-- [ ] Log rotation works (10MB max, 5 files)
-- [ ] No sensitive data appears in logs
-- [ ] Progress bars show during backup
-- [ ] Upload speed and ETA displayed
-- [ ] Progress bars disappear cleanly on completion
+- [x] Logs created at `~/.local/share/skylock/skylock.log`
+- [x] Log rotation works (10MB max, 5 files)
+- [x] No sensitive data appears in logs
+- [x] Progress bars show during backup
+- [x] Upload speed and ETA displayed
+- [x] Progress bars disappear cleanly on completion
 - [ ] Error messages include helpful suggestions
 - [ ] All common errors have recovery instructions
 - [ ] Documentation complete for failures

@@ -10,6 +10,7 @@ pub mod crypto;
 pub mod compression;
 pub mod deduplication;
 pub mod logging;
+pub mod error_display;
 
 // Re-export commonly used types
 pub use skylock_core::{Result, Error};
