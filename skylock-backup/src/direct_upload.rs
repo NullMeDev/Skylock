@@ -58,6 +58,9 @@ pub struct BackupManifest {
     pub file_count: usize,
     /// Source paths that were backed up
     pub source_paths: Vec<PathBuf>,
+    /// Base backup ID for incremental backups (None for full backups)
+    #[serde(default)]
+    pub base_backup_id: Option<String>,
 }
 
 /// File metadata for diff operations (simplified version of FileEntry)
@@ -117,9 +120,40 @@ impl DirectUploadBackup {
         }
     }
 
-    /// Create backup using direct upload strategy
+    /// Create full backup using direct upload strategy
     pub async fn create_backup(&self, paths: &[PathBuf]) -> Result<BackupManifest> {
+        self.create_backup_internal(paths, false).await
+    }
+    
+    /// Create incremental backup using direct upload strategy
+    pub async fn create_incremental_backup(&self, paths: &[PathBuf]) -> Result<BackupManifest> {
+        self.create_backup_internal(paths, true).await
+    }
+    
+    /// Internal backup creation with full/incremental support
+    async fn create_backup_internal(&self, paths: &[PathBuf], incremental: bool) -> Result<BackupManifest> {
         let backup_id = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+        let index_dir = self.config.data_dir.join("indexes");
+        tokio::fs::create_dir_all(&index_dir).await?;
+        let tracker = ChangeTracker::new(index_dir);
+        
+        // Determine base backup for incremental mode
+        let base_backup_id = if incremental {
+            if tracker.has_latest_index().await {
+                // Load latest index to get backup_id
+                let latest_index = tracker.load_latest_index().await?;
+                Some(latest_index.tracked_dirs.first()
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string())
+                )
+            } else {
+                println!("⚠️  No previous backup found - creating full backup instead");
+                None
+            }
+        } else {
+            None
+        };
         
         // Check for existing resume state
         let mut resume_state = if ResumeState::exists(&backup_id).await {
@@ -134,29 +168,54 @@ impl DirectUploadBackup {
             println!();
             Some(state)
         } else {
-            println!("🚀 Starting direct upload backup: {}", backup_id);
+            if incremental && base_backup_id.is_some() {
+                println!("🔄 Starting incremental backup: {}", backup_id);
+            } else {
+                println!("🚀 Starting full backup: {}", backup_id);
+            }
             None
         };
         
         println!("   📁 Using {}-thread parallel uploads", self.max_parallel);
         println!("   🔐 AES-256-GCM encryption enabled");
         println!("   🗜️  Smart compression (files >10MB)");
+        if let Some(ref base_id) = base_backup_id {
+            println!("   🔗 Base backup: backup_{}", base_id.as_ref().unwrap_or(&"unknown".to_string()));
+        }
         println!();
         
         // Collect all files to backup
         let mut all_files = Vec::new();
         let mut total_size = 0u64;
+        let mut skipped_count = 0;
         
         for path in paths {
             println!("📂 Scanning: {}", path.display());
-            let files = self.collect_files(path)?;
+            let mut files = self.collect_files(path)?;
             let path_size: u64 = files.iter().map(|(_, size)| size).sum();
-            total_size += path_size;
             println!("   Found {} files ({:.2} MB)", files.len(), path_size as f64 / 1024.0 / 1024.0);
+            
+            // Filter for incremental backups
+            if incremental && base_backup_id.is_some() {
+                // Get list of changed files from tracker
+                let changed_files = tracker.get_changed_files(paths).await?;
+                let changed_paths: std::collections::HashSet<_> = changed_files.into_iter().collect();
+                
+                let original_count = files.len();
+                files.retain(|(path, _)| changed_paths.contains(path));
+                skipped_count += original_count - files.len();
+            }
+            
+            let included_size: u64 = files.iter().map(|(_, size)| size).sum();
+            total_size += included_size;
             all_files.extend(files);
         }
         
         let file_count = all_files.len();
+        
+        if incremental && skipped_count > 0 {
+            println!("➡️  Incremental: Backing up {} changed files, skipping {} unchanged", file_count, skipped_count);
+        }
         
         println!();
         println!("📊 Total: {} files, {:.2} GB", file_count, total_size as f64 / 1024.0 / 1024.0 / 1024.0);
@@ -190,6 +249,7 @@ impl DirectUploadBackup {
             total_size,
             file_count,
             source_paths: paths.to_vec(),
+            base_backup_id: base_backup_id.flatten(),
         };
         
         // Upload manifest
@@ -198,12 +258,7 @@ impl DirectUploadBackup {
         // Clean up resume state file after successful completion
         ResumeState::delete(&backup_id).await?;
         
-        // Save file index for change tracking
-        let index_dir = self.config.data_dir.join("indexes");
-        tokio::fs::create_dir_all(&index_dir).await?;
-        let tracker = ChangeTracker::new(index_dir);
-        
-        // Build and save index of backed up files
+        // Build and save index of backed up files for change tracking
         let file_index = FileIndex::build(paths)?;
         if let Err(e) = tracker.save_index(&backup_id, &file_index).await {
             eprintln!("⚠️  Warning: Failed to save file index: {}", e);
@@ -211,8 +266,14 @@ impl DirectUploadBackup {
         }
         
         println!();
-        println!("✅ Backup complete: {}", backup_id);
-        println!("   📦 {} files uploaded", manifest.file_count);
+        if incremental && manifest.base_backup_id.is_some() {
+            println!("✅ Incremental backup complete: {}", backup_id);
+            println!("   🔗 Based on: {}", manifest.base_backup_id.as_ref().unwrap());
+            println!("   📦 {} files uploaded (changed only)", manifest.file_count);
+        } else {
+            println!("✅ Full backup complete: {}", backup_id);
+            println!("   📦 {} files uploaded", manifest.file_count);
+        }
         println!("   💾 {:.2} GB total", manifest.total_size as f64 / 1024.0 / 1024.0 / 1024.0);
         
         Ok(manifest)

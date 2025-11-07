@@ -293,6 +293,22 @@ impl ChangeTracker {
         let last_index = self.load_latest_index().await?;
         last_index.detect_changes(paths).await
     }
+    
+    /// Get list of files that have changed since last backup
+    pub async fn get_changed_files(&self, paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+        if !self.has_latest_index().await {
+            // No previous backup - all files are "changed"
+            let current_index = FileIndex::build(paths)?;
+            return Ok(current_index
+                .files
+                .keys()
+                .cloned()
+                .collect());
+        }
+        
+        let last_index = self.load_latest_index().await?;
+        last_index.get_changed_files(paths).await
+    }
 }
 
 #[cfg(test)]

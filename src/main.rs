@@ -102,6 +102,9 @@ enum Commands {
         /// Use direct upload mode (no archives, per-file encryption)
         #[arg(long)]
         direct: bool,
+        /// Create incremental backup (only changed files)
+        #[arg(long)]
+        incremental: bool,
         /// Maximum upload speed (e.g., "1.5M", "500K", "0" for unlimited)
         #[arg(long)]
         max_speed: Option<String>,
@@ -215,8 +218,8 @@ async fn handle_command(command: Commands, config_path: Option<PathBuf>) -> Resu
         Commands::StoreCredentials { username, password } => {
             store_credentials_interactive(username, password).await
         }
-        Commands::Backup { paths, name, force, direct, max_speed } => {
-            perform_backup(paths, name, force, direct, config_path, max_speed).await
+        Commands::Backup { paths, name, force, direct, incremental, max_speed } => {
+            perform_backup(paths, name, force, direct, incremental, config_path, max_speed).await
         }
         Commands::RestoreFile { backup_id, file_path, output } => {
             perform_restore_file(backup_id, file_path, output, config_path).await
@@ -336,7 +339,7 @@ async fn store_credentials_interactive(username: Option<String>, password: Optio
     Ok(())
 }
 
-async fn perform_backup(paths: Vec<PathBuf>, name: Option<String>, force: bool, direct: bool, config_path: Option<PathBuf>, max_speed: Option<String>) -> Result<()> {
+async fn perform_backup(paths: Vec<PathBuf>, name: Option<String>, force: bool, direct: bool, incremental: bool, config_path: Option<PathBuf>, max_speed: Option<String>) -> Result<()> {
     use progress::{ProgressReporter, ErrorHandler};
     use std::time::Instant;
     use colored::*;
@@ -484,7 +487,13 @@ async fn perform_backup(paths: Vec<PathBuf>, name: Option<String>, force: bool, 
             bandwidth_limit
         );
         
-        match direct_backup.create_backup(&backup_paths).await {
+        let result = if incremental {
+            direct_backup.create_incremental_backup(&backup_paths).await
+        } else {
+            direct_backup.create_backup(&backup_paths).await
+        };
+        
+        match result {
             Ok(manifest) => {
                 let duration = start_time.elapsed();
                 let size_formatted = ErrorHandler::format_file_size(manifest.total_size);

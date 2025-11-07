@@ -272,6 +272,7 @@ mod tests {
             total_size: 1000,
             file_count: 10,
             source_paths: vec![PathBuf::from("/test")],
+            base_backup_id: None,
         }
     }
     

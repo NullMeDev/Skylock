@@ -193,6 +193,9 @@ Edit `~/.config/skylock-hybrid/config.toml` with your Hetzner Storage Box creden
 # Create a backup
 skylock backup --direct /path/to/backup
 
+# Create an incremental backup (only changed files)
+skylock backup --direct --incremental /path/to/backup
+
 # Create a backup with bandwidth limit (1.5 MB/s)
 skylock backup --direct --max-speed 1.5M /path/to/backup
 

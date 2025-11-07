@@ -209,6 +209,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Stored in `~/.local/share/skylock/indexes/`
   - First backup warning for new users
   - Change tracker module with comprehensive unit tests
+- **Incremental Backup Mode**: Efficient incremental backups using change tracking
+  - `skylock backup --direct --incremental` command
+  - Only uploads changed files (added/modified) since last backup
+  - Backup chain tracking via `base_backup_id` in manifest
+  - Automatic fallback to full backup if no previous backup exists
+  - Shows skipped file count during backup
+  - Significantly faster for large datasets with few changes
+  - Maintains restore compatibility (full restore chain supported)
+  - CLI example: `skylock backup --direct --incremental ~/Documents`
   - 7 comprehensive unit tests covering all diff scenarios
   - CLI examples:
     - `skylock diff backup_20251107_120000 backup_20251107_140000` - Summary

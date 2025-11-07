@@ -299,6 +299,7 @@ mod tests {
             total_size: files.iter().map(|f| f.size).sum(),
             files,
             source_paths: vec![],
+            base_backup_id: None,
         }
     }
 
