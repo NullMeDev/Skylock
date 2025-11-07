@@ -162,6 +162,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Resume Interrupted Uploads**: Automatic resume capability for interrupted backups
+  - State tracking saves progress after each successful file upload
+  - Automatic detection of interrupted backups on restart
+  - Skip already-uploaded files when resuming
+  - Progress bars show resumed upload status
+  - Atomic state file updates prevent corruption
+  - Automatic cleanup of old state files (>7 days)
+  - Zero configuration required - works automatically
+
 ### Planned
 - Cron expression support for flexible scheduling
 - System tray integration (GUI)

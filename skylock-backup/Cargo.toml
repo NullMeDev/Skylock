@@ -31,6 +31,7 @@ tempfile = "3.8"
 
 # Direct upload dependencies
 walkdir = "2.4"
+directories = "5.0"
 
 # Windows-only backup dependencies
 [target.'cfg(windows)'.dependencies]

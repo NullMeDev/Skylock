@@ -14,6 +14,7 @@ Skylock is a production-ready encrypted backup system with comprehensive feature
 - ✅ Client-side AES-256-GCM encryption
 - ✅ Per-file streaming uploads with parallel processing
 - ✅ Direct upload mode (no local archives)
+- ✅ Resume interrupted uploads (automatic state tracking)
 - ✅ SHA-256 integrity verification
 - ✅ Zstd compression for large files (>10MB)
 - ✅ Hetzner Storage Box integration (WebDAV/SFTP)
@@ -80,8 +81,7 @@ Skylock is a production-ready encrypted backup system with comprehensive feature
 ### High Priority
 1. **Cron Expression Support** - More flexible scheduling options
 2. **System Snapshot Capability** - Full system recovery
-3. **Resume Interrupted Uploads** - Handle network interruptions
-4. **Bandwidth Throttling** - Rate limiting for uploads
+3. **Bandwidth Throttling** - Rate limiting for uploads
 
 ### Medium Priority
 1. **System Tray Integration** - GUI status indicator

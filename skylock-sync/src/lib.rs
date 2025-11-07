@@ -5,7 +5,6 @@ use url::Url;
 
 mod error;
 pub use error::{Error, Result};
-}
 
 #[derive(Debug)]
 pub struct SyncthingClient {

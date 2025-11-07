@@ -23,6 +23,7 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 **Backup Operations**
 - Direct upload mode: per-file streaming with parallel uploads
 - Archive mode: tar.zst.enc compressed archives (legacy)
+- Resume interrupted uploads: automatic state tracking and recovery
 - File-level deduplication and metadata tracking
 - Backup manifest system with JSON metadata
 - Professional backup ID structure (backup_YYYYMMDD_HHMMSS)
@@ -104,7 +105,6 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 
 **High Priority - Automation & Reliability**
 - System snapshot capability for full system recovery
-- Resume interrupted uploads
 - Bandwidth throttling and rate limiting
 - Cron expression support for flexible scheduling
 
