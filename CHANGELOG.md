@@ -189,6 +189,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - CLI examples:
     - `skylock schedule "0 0 2 * * *"` - Validate and show next runs
     - `skylock schedule --presets` - Show common presets
+- **Backup Diff/Comparison Tools**: Compare backups and identify changes
+  - `skylock diff <backup_id1> <backup_id2>` command
+  - Intelligently detects files added, removed, modified, and moved/renamed
+  - Move detection via hash comparison (same content, different path)
+  - Detailed summary with file counts and size changes
+  - Color-coded output (green = added, red = removed, yellow = modified, cyan = moved)
+  - Supports filtering by change type (`--filter added,removed,modified,moved`)
+  - Detailed mode (`--detailed`) shows individual file paths and size deltas
+  - Net size change calculation
+  - 7 comprehensive unit tests covering all diff scenarios
+  - CLI examples:
+    - `skylock diff backup_20251107_120000 backup_20251107_140000` - Summary
+    - `skylock diff <old> <new> --detailed` - Show all files
+    - `skylock diff <old> <new> --filter added,modified` - Only show specific changes
 
 ### Planned
 - System tray integration (GUI)

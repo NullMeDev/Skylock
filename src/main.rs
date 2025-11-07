@@ -172,6 +172,19 @@ enum Commands {
         #[arg(long)]
         presets: bool,
     },
+    /// Compare two backups and show differences
+    Diff {
+        /// Older backup ID (base for comparison)
+        backup_id_old: String,
+        /// Newer backup ID (to compare against base)
+        backup_id_new: String,
+        /// Show detailed file list (default: summary only)
+        #[arg(short, long)]
+        detailed: bool,
+        /// Show only specific change types (added, removed, modified, moved)
+        #[arg(short, long, value_delimiter = ',')]
+        filter: Option<Vec<String>>,
+    },
 }
 
 #[derive(clap::ValueEnum, Clone)]
@@ -220,6 +233,9 @@ async fn handle_command(command: Commands, config_path: Option<PathBuf>) -> Resu
         }
         Commands::Schedule { expression, presets } => {
             test_schedule(expression, presets).await
+        }
+        Commands::Diff { backup_id_old, backup_id_new, detailed, filter } => {
+            perform_diff(backup_id_old, backup_id_new, detailed, filter, config_path).await
         }
     }
 }
@@ -1176,6 +1192,207 @@ async fn test_schedule(expression: Option<String>, show_presets: bool) -> Result
         println!("Examples:");
         println!("  skylock schedule \"0 0 2 * * *\"     # Daily at 2 AM");
         println!("  skylock schedule \"0 */15 * * * *\"  # Every 15 minutes");
+    }
+    
+    Ok(())
+}
+
+async fn perform_diff(
+    backup_id_old: String,
+    backup_id_new: String,
+    detailed: bool,
+    filter: Option<Vec<String>>,
+    config_path: Option<PathBuf>,
+) -> Result<()> {
+    use progress::ErrorHandler;
+    use colored::*;
+    use skylock_backup::{BackupDiff, DirectUploadBackup};
+    
+    ErrorHandler::print_info("Comparing Backups", &format!(
+        "Comparing {} → {}",
+        backup_id_old.bright_yellow(),
+        backup_id_new.bright_yellow()
+    ));
+    
+    // Load configuration
+    let config = match Config::load(config_path) {
+        Ok(config) => config,
+        Err(e) => {
+            ErrorHandler::print_error("Configuration Error", &e.to_string());
+            return Err(anyhow::anyhow!("Configuration required"));
+        }
+    };
+    
+    if config.hetzner.username == "your-username" {
+        ErrorHandler::print_error("Credentials Error", "Hetzner credentials not configured");
+        return Err(anyhow::anyhow!("Hetzner credentials required"));
+    }
+    
+    // Create Hetzner client
+    let hetzner_config = skylock_hetzner::HetznerConfig {
+        endpoint: config.hetzner.endpoint.clone(),
+        username: config.hetzner.username.clone(),
+        password: config.hetzner.password.clone(),
+        api_token: config.hetzner.encryption_key.clone(),
+        encryption_key: config.hetzner.encryption_key.clone(),
+    };
+    
+    let hetzner_client = match skylock_hetzner::HetznerClient::new(hetzner_config) {
+        Ok(client) => client,
+        Err(e) => {
+            ErrorHandler::print_error("Client Error", &e.to_string());
+            return Err(anyhow::anyhow!("Failed to initialize Hetzner client"));
+        }
+    };
+    
+    // Create encryption manager
+    let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
+        .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
+    
+    // Create direct upload backup manager (no bandwidth limit for diff)
+    let direct_backup = DirectUploadBackup::new(config, hetzner_client, encryption, None);
+    
+    // Load both manifests
+    println!("📥 Loading backup manifests...");
+    let manifest_old = direct_backup.load_manifest(&backup_id_old).await
+        .map_err(|e| anyhow::anyhow!("Failed to load old backup manifest: {}", e))?;
+    let manifest_new = direct_backup.load_manifest(&backup_id_new).await
+        .map_err(|e| anyhow::anyhow!("Failed to load new backup manifest: {}", e))?;
+    
+    // Compare manifests
+    let diff = BackupDiff::compare(&manifest_old, &manifest_new);
+    
+    // Display summary
+    println!();
+    println!("{}", "📊 Backup Comparison Summary".bright_blue().bold());
+    println!();
+    println!("   {} {}", "Old backup:".dimmed(), backup_id_old.bright_yellow());
+    println!("   {} {}", "  Created:".dimmed(), diff.timestamp_old.format("%Y-%m-%d %H:%M:%S UTC"));
+    println!();
+    println!("   {} {}", "New backup:".dimmed(), backup_id_new.bright_yellow());
+    println!("   {} {}", "  Created:".dimmed(), diff.timestamp_new.format("%Y-%m-%d %H:%M:%S UTC"));
+    println!();
+    
+    if !diff.has_changes() {
+        println!("{}", "✅ No differences found - backups are identical".bright_green());
+        return Ok(());
+    }
+    
+    println!("{}", "Changes:".bright_cyan().bold());
+    
+    // Determine which change types to show
+    let show_added = filter.as_ref().map_or(true, |f| f.iter().any(|t| t == "added"));
+    let show_removed = filter.as_ref().map_or(true, |f| f.iter().any(|t| t == "removed"));
+    let show_modified = filter.as_ref().map_or(true, |f| f.iter().any(|t| t == "modified"));
+    let show_moved = filter.as_ref().map_or(true, |f| f.iter().any(|t| t == "moved"));
+    
+    // Added files
+    if show_added && diff.summary.files_added_count > 0 {
+        println!("   {} {} files ({} bytes)",
+            "+".bright_green().bold(),
+            diff.summary.files_added_count.to_string().bright_green(),
+            ErrorHandler::format_file_size(diff.summary.size_added).bright_green()
+        );
+        
+        if detailed {
+            for file in &diff.files_added {
+                println!("      + {:<60} {}", 
+                    file.path.bright_green(),
+                    ErrorHandler::format_file_size(file.size).dimmed()
+                );
+            }
+        }
+    }
+    
+    // Removed files
+    if show_removed && diff.summary.files_removed_count > 0 {
+        println!("   {} {} files ({} bytes)",
+            "-".bright_red().bold(),
+            diff.summary.files_removed_count.to_string().bright_red(),
+            ErrorHandler::format_file_size(diff.summary.size_removed).bright_red()
+        );
+        
+        if detailed {
+            for file in &diff.files_removed {
+                println!("      - {:<60} {}", 
+                    file.path.bright_red(),
+                    ErrorHandler::format_file_size(file.size).dimmed()
+                );
+            }
+        }
+    }
+    
+    // Modified files
+    if show_modified && diff.summary.files_modified_count > 0 {
+        println!("   {} {} files",
+            "~".bright_yellow().bold(),
+            diff.summary.files_modified_count.to_string().bright_yellow()
+        );
+        
+        if detailed {
+            for file in &diff.files_modified {
+                let delta_str = if file.size_delta > 0 {
+                    format!("+{}", ErrorHandler::format_file_size(file.size_delta as u64)).bright_green()
+                } else if file.size_delta < 0 {
+                    format!("-{}", ErrorHandler::format_file_size((-file.size_delta) as u64)).bright_red()
+                } else {
+                    "±0".normal()
+                };
+                
+                println!("      ~ {:<60} {}", 
+                    file.path.bright_yellow(),
+                    delta_str
+                );
+            }
+        }
+    }
+    
+    // Moved/renamed files
+    if show_moved && diff.summary.files_moved_count > 0 {
+        println!("   {} {} files",
+            "→".bright_cyan().bold(),
+            diff.summary.files_moved_count.to_string().bright_cyan()
+        );
+        
+        if detailed {
+            for file in &diff.files_moved {
+                println!("      {} → {}", 
+                    file.path_old.dimmed(),
+                    file.path_new.bright_cyan()
+                );
+            }
+        }
+    }
+    
+    // Unchanged files
+    println!("   {} {} files",
+        "=".dimmed(),
+        diff.summary.files_unchanged_count.to_string().dimmed()
+    );
+    
+    // Net change
+    println!();
+    let net_change_str = if diff.summary.size_delta > 0 {
+        format!("+{}", ErrorHandler::format_file_size(diff.summary.size_delta as u64))
+    } else if diff.summary.size_delta < 0 {
+        format!("-{}", ErrorHandler::format_file_size((-diff.summary.size_delta) as u64))
+    } else {
+        "0 bytes".to_string()
+    };
+    
+    let net_color = if diff.summary.size_delta > 0 {
+        net_change_str.bright_green()
+    } else if diff.summary.size_delta < 0 {
+        net_change_str.bright_red()
+    } else {
+        net_change_str.dimmed()
+    };
+    
+    println!("   {} {}", "Net change:".bright_cyan(), net_color);
+    
+    if !detailed && diff.total_changes() > 0 {
+        println!();
+        println!("💡 Use {} for detailed file listings", "--detailed".bright_yellow());
     }
     
     Ok(())

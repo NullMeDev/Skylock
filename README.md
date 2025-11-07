@@ -49,6 +49,7 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - `list` - List all backups with metadata
 - `restore` - Restore entire backups or individual files
 - `restore-file` - Restore single files from direct upload backups
+- `diff` - Compare two backups and show differences
 - `schedule` - Validate and test cron expressions, show presets
 - `test` - Test cloud storage connections
 - `config` - Configuration management commands
@@ -109,12 +110,12 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - ✅ Resume interrupted uploads (automatic state tracking)
 - ✅ Bandwidth throttling and rate limiting
 - ✅ Cron expression support for flexible scheduling
+- ✅ Backup diff/comparison tools
 - System snapshot capability for full system recovery
 
 **Medium Priority - Enhanced Functionality**
 - Real-time file system monitoring and change detection
 - Incremental backups (only changed files)
-- Backup diff/comparison tools
 - Parallel restore for faster recovery
 - System tray integration (GUI status indicator)
 
@@ -200,6 +201,10 @@ skylock list
 
 # Restore a backup
 skylock restore <backup_id> --target /path/to/restore
+
+# Compare two backups
+skylock diff backup_20251107_120000 backup_20251107_140000
+skylock diff <old_id> <new_id> --detailed  # Show detailed file list
 
 # Test cron schedule expressions
 skylock schedule "0 0 2 * * *"     # Validate and show next runs

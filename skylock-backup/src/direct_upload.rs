@@ -59,6 +59,33 @@ pub struct BackupManifest {
     pub source_paths: Vec<PathBuf>,
 }
 
+/// File metadata for diff operations (simplified version of FileEntry)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileMetadata {
+    /// Relative path of the file
+    pub relative_path: String,
+    /// File size in bytes
+    pub size: u64,
+    /// SHA-256 hash of original file
+    pub hash: String,
+    /// Whether file was compressed
+    pub compressed: bool,
+    /// Remote path on storage box
+    pub remote_path: String,
+}
+
+impl From<&FileEntry> for FileMetadata {
+    fn from(entry: &FileEntry) -> Self {
+        FileMetadata {
+            relative_path: entry.local_path.to_string_lossy().to_string(),
+            size: entry.size,
+            hash: entry.hash.clone(),
+            compressed: entry.compressed,
+            remote_path: entry.remote_path.clone(),
+        }
+    }
+}
+
 pub struct DirectUploadBackup {
     config: Arc<Config>,
     hetzner: Arc<HetznerClient>,
@@ -675,6 +702,12 @@ impl DirectUploadBackup {
             .map_err(|e| SkylockError::Backup(format!("Parse manifest failed: {}", e)))?;
         
         Ok(manifest)
+    }
+    
+    /// Load a backup manifest by ID (public API for comparison)
+    pub async fn load_manifest(&self, backup_id: &str) -> Result<BackupManifest> {
+        let manifest_path = PathBuf::from(format!("/skylock/backups/{}/manifest.json", backup_id));
+        self.download_manifest(&manifest_path).await
     }
 
     /// Restore entire backup with progress tracking
