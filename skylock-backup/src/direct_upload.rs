@@ -612,8 +612,13 @@ impl DirectUploadBackup {
         };
         progress.set_position(size * 3 / 4); // 75% for compression
         
-        // Encrypt
-        let encrypted_data = encryption.encrypt(&data_to_encrypt)?;
+        // Encrypt with AAD binding (v2 format)
+        let file_path_str = local_path.to_string_lossy();
+        let encrypted_data = encryption.encrypt_with_aad(
+            &data_to_encrypt,
+            backup_id,
+            &file_path_str
+        )?;
         
         // Create parent directories
         if let Some(parent) = PathBuf::from(&remote_path).parent() {
@@ -683,8 +688,13 @@ impl DirectUploadBackup {
             data
         };
         
-        // Encrypt
-        let encrypted_data = encryption.encrypt(&data_to_encrypt)?;
+        // Encrypt with AAD binding (v2 format)
+        let file_path_str = local_path.to_string_lossy();
+        let encrypted_data = encryption.encrypt_with_aad(
+            &data_to_encrypt,
+            backup_id,
+            &file_path_str
+        )?;
         
         // Create parent directories on remote storage
         if let Some(parent) = PathBuf::from(&remote_path).parent() {
@@ -843,13 +853,21 @@ impl DirectUploadBackup {
         let mut restored_count = 0;
         let mut failed_count = 0;
         
+        // Check encryption version and warn if using legacy format
+        if manifest.encryption_version == "v1" || manifest.kdf_params.is_none() {
+            println!("⚠️  WARNING: This backup uses legacy encryption (v1)");
+            println!("   Consider migrating to v2 format for improved security.");
+            println!("   Run: skylock migrate {}", backup_id);
+            println!();
+        }
+        
         // Restore files with progress
         for entry in &manifest.files {
             file_pb.set_message(format!("⬇️  Restoring: {}", entry.local_path.display()));
             file_pb.set_length(entry.size);
             file_pb.set_position(0);
             
-            match self.restore_single_file_with_progress(entry, target_dir, file_pb.clone()).await {
+            match self.restore_single_file_with_progress(entry, target_dir, &manifest, file_pb.clone()).await {
                 Ok(_) => {
                     restored_count += 1;
                     overall_pb.inc(1);
@@ -884,6 +902,7 @@ impl DirectUploadBackup {
         &self,
         entry: &FileEntry,
         target_dir: &Path,
+        manifest: &BackupManifest,
         progress: ProgressBar,
     ) -> Result<()> {
         // Download encrypted file
@@ -896,9 +915,24 @@ impl DirectUploadBackup {
         ).await?;
         progress.set_position(entry.size / 3); // 33% for download
         
-        // Read and decrypt
+        // Read and decrypt with version-aware decryption
         let encrypted_data = tokio::fs::read(temp_encrypted.path()).await?;
-        let decrypted_data = self.encryption.decrypt(&encrypted_data)?;
+        
+        // Detect encryption version from manifest
+        let is_v2 = manifest.encryption_version == "v2" && manifest.kdf_params.is_some();
+        
+        let decrypted_data = if is_v2 {
+            // v2: Use AAD-bound decryption
+            let file_path_str = entry.local_path.to_string_lossy();
+            self.encryption.decrypt_with_aad(
+                &encrypted_data,
+                &manifest.backup_id,
+                &file_path_str
+            )?
+        } else {
+            // v1: Use legacy decryption (no AAD)
+            self.encryption.decrypt(&encrypted_data)?
+        };
         progress.set_position(entry.size * 2 / 3); // 66% for decryption
         
         // Decompress if needed
@@ -939,7 +973,7 @@ impl DirectUploadBackup {
     }
     
     /// Restore a single file (legacy without progress)
-    async fn restore_single_file(&self, entry: &FileEntry, target_dir: &Path) -> Result<()> {
+    async fn restore_single_file(&self, entry: &FileEntry, target_dir: &Path, manifest: &BackupManifest) -> Result<()> {
         use indicatif::{ProgressBar, ProgressStyle};
         
         let pb = ProgressBar::new(entry.size);
@@ -951,7 +985,7 @@ impl DirectUploadBackup {
         );
         pb.set_message(format!("Restoring {}", entry.local_path.display()));
         
-        let result = self.restore_single_file_with_progress(entry, target_dir, pb.clone()).await;
+        let result = self.restore_single_file_with_progress(entry, target_dir, manifest, pb.clone()).await;
         pb.finish_and_clear();
         result
     }
@@ -1062,11 +1096,16 @@ impl DirectUploadBackup {
         
         println!("🔄 Restoring single file: {}", file_path);
         
+        // Warn if using legacy encryption
+        if manifest.encryption_version == "v1" || manifest.kdf_params.is_none() {
+            println!("⚠️  WARNING: This backup uses legacy encryption (v1)");
+        }
+        
         // Restore to output path
         let temp_dir = tempfile::tempdir()
             .map_err(|e| SkylockError::Backup(format!("Temp dir failed: {}", e)))?;
         
-        self.restore_single_file(entry, temp_dir.path()).await?;
+        self.restore_single_file(entry, temp_dir.path(), &manifest).await?;
         
         let restored_file = temp_dir.path().join(
             entry.local_path.strip_prefix("/").unwrap_or(&entry.local_path)
