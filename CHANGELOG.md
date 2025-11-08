@@ -214,10 +214,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Only uploads changed files (added/modified) since last backup
   - Backup chain tracking via `base_backup_id` in manifest
   - Automatic fallback to full backup if no previous backup exists
-  - Shows skipped file count during backup
+  - Shows skipped file count during incremental backups
   - Significantly faster for large datasets with few changes
   - Maintains restore compatibility (full restore chain supported)
   - CLI example: `skylock backup --direct --incremental ~/Documents`
+- **Backup Verification Command**: Verify backup integrity and detect corruption
+  - `skylock verify <backup_id>` command for quick verification (file existence)
+  - `skylock verify <backup_id> --full` for deep verification (download and verify hashes)
+  - Parallel verification with adaptive concurrency (4 threads max)
+  - Progress bars for verification status
+  - Detailed reporting: missing files, hash mismatches, corruption detection
+  - Recovery suggestions for failed verifications
+  - SHA-256 hash verification for data integrity
+  - Automatic decryption and decompression during full verification
+  - Helpful output with color-coded results
+  - CLI examples:
+    - `skylock verify backup_20251107_120000`  # Quick check
+    - `skylock verify backup_20251107_120000 --full`  # Full verification
   - 7 comprehensive unit tests covering all diff scenarios
   - CLI examples:
     - `skylock diff backup_20251107_120000 backup_20251107_140000` - Summary

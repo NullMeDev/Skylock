@@ -196,6 +196,14 @@ enum Commands {
         #[arg(short, long)]
         summary: bool,
     },
+    /// Verify backup integrity
+    Verify {
+        /// Backup ID to verify
+        backup_id: String,
+        /// Perform full verification (download and verify hashes)
+        #[arg(short, long)]
+        full: bool,
+    },
 }
 
 #[derive(clap::ValueEnum, Clone)]
@@ -250,6 +258,9 @@ async fn handle_command(command: Commands, config_path: Option<PathBuf>) -> Resu
         }
         Commands::Changes { paths, summary } => {
             show_file_changes(paths, summary, config_path).await
+        }
+        Commands::Verify { backup_id, full } => {
+            verify_backup(backup_id, full, config_path).await
         }
     }
 }
@@ -1413,6 +1424,153 @@ async fn perform_diff(
     if !detailed && diff.total_changes() > 0 {
         println!();
         println!("💡 Use {} for detailed file listings", "--detailed".bright_yellow());
+    }
+    
+    Ok(())
+}
+
+async fn verify_backup(
+    backup_id: String,
+    full: bool,
+    config_path: Option<PathBuf>,
+) -> Result<()> {
+    use progress::ErrorHandler;
+    use colored::*;
+    use skylock_backup::{BackupVerifier, DirectUploadBackup};
+    
+    ErrorHandler::print_info("Backup Verification", &format!(
+        "Verifying backup: {}",
+        backup_id.bright_yellow()
+    ));
+    
+    // Load configuration
+    let config = match Config::load(config_path) {
+        Ok(config) => config,
+        Err(e) => {
+            ErrorHandler::print_error("Configuration Error", &e.to_string());
+            return Err(anyhow::anyhow!("Configuration required"));
+        }
+    };
+    
+    if config.hetzner.username == "your-username" {
+        ErrorHandler::print_error("Credentials Error", "Hetzner credentials not configured");
+        return Err(anyhow::anyhow!("Hetzner credentials required"));
+    }
+    
+    // Create Hetzner client
+    let hetzner_config = skylock_hetzner::HetznerConfig {
+        endpoint: config.hetzner.endpoint.clone(),
+        username: config.hetzner.username.clone(),
+        password: config.hetzner.password.clone(),
+        api_token: config.hetzner.encryption_key.clone(),
+        encryption_key: config.hetzner.encryption_key.clone(),
+    };
+    
+    let hetzner_client = match skylock_hetzner::HetznerClient::new(hetzner_config) {
+        Ok(client) => client,
+        Err(e) => {
+            ErrorHandler::print_error("Client Error", &e.to_string());
+            return Err(anyhow::anyhow!("Failed to initialize Hetzner client"));
+        }
+    };
+    
+    // Create encryption manager
+    let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
+        .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
+    
+    // Load manifest
+    println!("📥 Loading backup manifest...");
+    let direct_backup = DirectUploadBackup::new(config, hetzner_client.clone(), encryption.clone(), None);
+    let manifest = direct_backup.load_manifest(&backup_id).await
+        .map_err(|e| anyhow::anyhow!("Failed to load backup manifest: {}", e))?;
+    
+    println!("✅ Manifest loaded: {} files", manifest.file_count);
+    println!();
+    
+    // Create verifier
+    let verifier = BackupVerifier::new(hetzner_client);
+    
+    // Perform verification
+    let result = if full {
+        verifier.verify_full(&manifest, Arc::new(encryption)).await
+            .map_err(|e| anyhow::anyhow!("Verification failed: {}", e))?
+    } else {
+        verifier.verify_quick(&manifest).await
+            .map_err(|e| anyhow::anyhow!("Verification failed: {}", e))?
+    };
+    
+    // Display results
+    println!();
+    println!("{}", "📋 Verification Results".bright_blue().bold());
+    println!();
+    println!("   {} {}", "Backup ID:".dimmed(), result.backup_id.bright_yellow());
+    println!("   {} {}", "Total files:".dimmed(), result.total_files);
+    println!("   {} {}", "Files exist:".dimmed(), result.files_exist.to_string().bright_cyan());
+    
+    if full {
+        println!("   {} {}", "Hashes verified:".dimmed(), result.files_verified.to_string().bright_green());
+    }
+    
+    if result.files_with_errors > 0 {
+        println!("   {} {}", "Errors:".dimmed(), result.files_with_errors.to_string().bright_red());
+    }
+    
+    println!();
+    
+    if result.is_success() {
+        println!("{}", "✅ Verification passed - backup is healthy!".bright_green().bold());
+    } else {
+        println!("{}", "❌ Verification failed - backup has issues".bright_red().bold());
+        println!();
+        
+        // Show missing files
+        let missing = result.missing_files();
+        if !missing.is_empty() {
+            println!("{}", "Missing files:".bright_red().bold());
+            for file in missing.iter().take(10) {
+                println!("   - {}", file.path.display().to_string().bright_red());
+            }
+            if missing.len() > 10 {
+                println!("   ... and {} more", (missing.len() - 10).to_string().bright_red());
+            }
+            println!();
+        }
+        
+        // Show corrupted files
+        if full {
+            let corrupted = result.corrupted_files();
+            if !corrupted.is_empty() {
+                println!("{}", "Corrupted files (hash mismatch):".bright_red().bold());
+                for file in corrupted.iter().take(10) {
+                    println!("   - {}", file.path.display().to_string().bright_red());
+                }
+                if corrupted.len() > 10 {
+                    println!("   ... and {} more", (corrupted.len() - 10).to_string().bright_red());
+                }
+                println!();
+            }
+        }
+        
+        // Suggest recovery actions
+        println!("{}", "💡 Recovery Suggestions:".bright_yellow().bold());
+        
+        if !missing.is_empty() {
+            println!("   1. Re-run the backup to ensure all files are uploaded");
+            println!("   2. Check network connectivity and storage space");
+        }
+        
+        if full && !result.corrupted_files().is_empty() {
+            println!("   3. Corrupted files detected - data may be damaged");
+            println!("   4. Consider restoring from an earlier backup");
+            println!("   5. Re-upload corrupted files with a new backup");
+        }
+        
+        println!();
+    }
+    
+    if !full && result.is_success() {
+        println!("💡 For deeper verification, run with {} to verify file hashes", "--full".bright_yellow());
+        println!("   (This will download all files and may take significant time)");
     }
     
     Ok(())

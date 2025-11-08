@@ -214,6 +214,10 @@ skylock changes                    # Show all changes
 skylock changes --summary          # Show summary only
 skylock changes /path/to/check     # Check specific paths
 
+# Verify backup integrity
+skylock verify backup_20251107_120000          # Quick check (file existence)
+skylock verify backup_20251107_120000 --full   # Full verification (verify hashes)
+
 # Test cron schedule expressions
 skylock schedule "0 0 2 * * *"     # Validate and show next runs
 skylock schedule --presets         # Show common presets
