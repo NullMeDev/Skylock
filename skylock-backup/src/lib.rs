@@ -10,6 +10,7 @@ pub mod bandwidth;
 pub mod diff;
 pub mod change_tracker;
 pub mod verification;
+pub mod migration;
 pub use error::{Result, SkylockError};
 pub use direct_upload::{DirectUploadBackup, BackupManifest, FileEntry};
 pub use retention::{RetentionPolicy, RetentionManager, GfsPolicy};
