@@ -1457,7 +1457,7 @@ async fn verify_backup(
         return Err(anyhow::anyhow!("Hetzner credentials required"));
     }
     
-    // Create Hetzner client
+    // Create Hetzner client for DirectUploadBackup
     let hetzner_config = skylock_hetzner::HetznerConfig {
         endpoint: config.hetzner.endpoint.clone(),
         username: config.hetzner.username.clone(),
@@ -1466,7 +1466,7 @@ async fn verify_backup(
         encryption_key: config.hetzner.encryption_key.clone(),
     };
     
-    let hetzner_client = match skylock_hetzner::HetznerClient::new(hetzner_config) {
+    let hetzner_client1 = match skylock_hetzner::HetznerClient::new(hetzner_config.clone()) {
         Ok(client) => client,
         Err(e) => {
             ErrorHandler::print_error("Client Error", &e.to_string());
@@ -1474,25 +1474,33 @@ async fn verify_backup(
         }
     };
     
-    // Create encryption manager
-    let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
+    // Create encryption manager for DirectUploadBackup
+    let encryption1 = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
         .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
+    
+    // Save encryption_key before moving config
+    let encryption_key = config.hetzner.encryption_key.clone();
     
     // Load manifest
     println!("📥 Loading backup manifest...");
-    let direct_backup = DirectUploadBackup::new(config, hetzner_client.clone(), encryption.clone(), None);
+    let direct_backup = DirectUploadBackup::new(config, hetzner_client1, encryption1, None);
     let manifest = direct_backup.load_manifest(&backup_id).await
         .map_err(|e| anyhow::anyhow!("Failed to load backup manifest: {}", e))?;
     
     println!("✅ Manifest loaded: {} files", manifest.file_count);
     println!();
     
-    // Create verifier
-    let verifier = BackupVerifier::new(hetzner_client);
+    // Create separate instances for BackupVerifier
+    let hetzner_client2 = skylock_hetzner::HetznerClient::new(hetzner_config)
+        .map_err(|e| anyhow::anyhow!("Failed to create second client: {}", e))?;
+    let encryption2 = skylock_backup::encryption::EncryptionManager::new(&encryption_key)
+        .map_err(|e| anyhow::anyhow!("Failed to create encryption for verification: {}", e))?;
+    
+    let verifier = BackupVerifier::new(hetzner_client2);
     
     // Perform verification
     let result = if full {
-        verifier.verify_full(&manifest, Arc::new(encryption)).await
+        verifier.verify_full(&manifest, Arc::new(encryption2)).await
             .map_err(|e| anyhow::anyhow!("Verification failed: {}", e))?
     } else {
         verifier.verify_quick(&manifest).await

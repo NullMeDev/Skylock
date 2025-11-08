@@ -32,16 +32,10 @@ impl From<skylock_core::SkylockError> for Error {
     }
 }
 
-impl From<skylock_sync::SyncErrorType> for Error {
-    fn from(e: skylock_sync::SyncErrorType) -> Self {
-        match e {
-            skylock_sync::SyncErrorType::ServiceFailure =>
-                Error::System(SystemErrorType::InternalError),
-            skylock_sync::SyncErrorType::InvalidConfig =>
-                Error::Other("Invalid sync configuration".to_string()),
-            skylock_sync::SyncErrorType::NetworkError =>
-                Error::Network(NetworkErrorType::ConnectionFailed),
-        }
+impl From<skylock_sync::Error> for Error {
+    fn from(e: skylock_sync::Error) -> Self {
+        // Map skylock_sync::Error to our Error type
+        Error::Other(format!("Sync error: {}", e))
     }
 }
 

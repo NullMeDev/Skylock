@@ -42,7 +42,7 @@ pub struct FileMetadata {
 }
 
 #[allow(dead_code)]
-#[allow(dead_code)]
+#[derive(Clone)]
 pub struct HetznerConfig {
     pub endpoint: String,
     pub username: String,

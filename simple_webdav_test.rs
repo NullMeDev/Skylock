@@ -1,6 +1,7 @@
 use std::env;
 use std::path::Path;
 use anyhow::Result;
+use base64::Engine;
 
 // Direct WebDAV test without relying on the full skylock-core compilation
 #[tokio::main]
@@ -101,7 +102,7 @@ async fn main() -> Result<()> {
 
     if response.status().is_success() {
         let downloaded = response.bytes().await?;
-        if downloaded == test_content {
+        if downloaded.as_ref() == test_content {
             println!("✅ File download and verification successful!");
         } else {
             println!("❌ File content verification failed!");

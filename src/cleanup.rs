@@ -63,8 +63,11 @@ pub async fn perform_cleanup(dry_run: bool, force: bool, config_path: Option<Pat
     let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
         .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
     
+    // Extract retention_days before moving config
+    let retention_days = config.backup.retention_days;
+    
     // Create direct upload backup manager (no bandwidth limit for cleanup)
-    let direct_backup = skylock_backup::DirectUploadBackup::new(config.clone(), hetzner_client, encryption, None);
+    let direct_backup = skylock_backup::DirectUploadBackup::new(config, hetzner_client, encryption, None);
     
     // List all backups
     let list_spinner = progress.create_spinner("Fetching backup list...");
@@ -80,7 +83,7 @@ pub async fn perform_cleanup(dry_run: bool, force: bool, config_path: Option<Pat
     // Create retention policy from config
     let retention_policy = RetentionPolicy {
         keep_last: Some(30),
-        keep_days: Some(config.backup.retention_days as u32),
+        keep_days: Some(retention_days as u32),
         gfs: None, // Can be configured later
         minimum_keep: 3,
     };
