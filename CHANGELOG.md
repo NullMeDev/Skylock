@@ -5,6 +5,51 @@ All notable changes to Skylock will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-11-08
+
+### Added
+- **Incremental Backups**: Dramatically faster backups by only uploading changed files
+  - `--incremental` flag for backup command
+  - SHA-256 hash-based change detection
+  - Automatic file index tracking in `~/.local/share/skylock/indexes/`
+  - Backup chain support with `base_backup_id` in manifests
+  - 10-100x speedup for large datasets with few changes
+  - Each backup remains complete and independently restorable
+- **File Change Tracking**: Detect what changed since last backup
+  - `skylock changes` command to preview changes before backup
+  - Shows added, removed, modified, and metadata-only changes
+  - Summary mode (`--summary`) for quick overview
+  - Per-file SHA-256 hash verification
+  - Persistent file indexes for fast comparison
+- **Backup Verification**: Verify backup integrity and recoverability
+  - `skylock verify <backup_id>` command
+  - Quick verification mode (checks file existence)
+  - Full verification mode (`--full`) with hash validation
+  - Parallel verification (4 threads) with progress bars
+  - Detailed reporting of missing/corrupted files
+  - Recovery suggestions for failed verifications
+  - Automatic decryption and decompression during verification
+- **Comprehensive Documentation**
+  - INCREMENTAL_BACKUP_GUIDE.md - Complete incremental backup guide
+  - VERIFICATION_GUIDE.md - Backup verification guide
+  - Updated USAGE.md with all new commands
+  - Examples, best practices, and troubleshooting
+
+### Changed
+- Enhanced DirectUploadBackup with incremental backup support
+- BackupManifest now includes `base_backup_id` field (backward compatible)
+- Updated README with incremental backup and verification features
+- Moved completed features from "In Progress" to "Advanced Backup Features"
+
+### Fixed
+- Azure storage provider syntax error (extra closing brace)
+- Test compatibility with async ChangeTracker API
+
+### Performance
+- Incremental backups are 10-100x faster for large datasets
+- Lazy hash computation (only when size/mtime differs)
+- Parallel uploads maintained (4 threads default)
+
 ## [0.4.0] - 2025-11-07
 
 ### Added

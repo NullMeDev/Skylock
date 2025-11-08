@@ -191,4 +191,3 @@ impl StorageBackend for AzureStorageProvider {
         })
     }
 }
-}
