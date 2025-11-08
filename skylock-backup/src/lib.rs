@@ -18,6 +18,7 @@ pub use bandwidth::{BandwidthLimiter, parse_bandwidth_limit};
 pub use diff::{BackupDiff, FileDiff, FileModification, FileMove, DiffSummary};
 pub use change_tracker::{ChangeTracker, FileIndex, FileChange, ChangeType};
 pub use verification::{BackupVerifier, VerificationResult, FileVerification};
+pub use encryption::{EncryptionManager, KdfParams};
 use chrono::{DateTime, Utc};
 use skylock_core::Config;
 use skylock_hetzner::HetznerClient;
@@ -25,7 +26,6 @@ use tracing::{info, warn};
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use crate::vss::VssSnapshot;
-use crate::encryption::EncryptionManager;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BackupMetadata {

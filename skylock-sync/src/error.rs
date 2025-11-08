@@ -21,6 +21,9 @@ pub enum Error {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     
+    #[error("URL parse error: {0}")]
+    UrlParse(#[from] url::ParseError),
+    
     #[error("Other error: {0}")]
     Other(String),
 }
@@ -48,6 +51,7 @@ impl From<Error> for SkylockError {
             Error::Storage(e) => SkylockError::Storage(e),
             Error::System(e) => SkylockError::System(e),
             Error::Io(e) => SkylockError::Io(e),
+            Error::UrlParse(e) => SkylockError::Config(format!("URL parse error: {}", e)),
             Error::Other(msg) => SkylockError::Other(msg),
         }
     }

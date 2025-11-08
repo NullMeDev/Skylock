@@ -61,6 +61,16 @@ pub struct BackupManifest {
     /// Base backup ID for incremental backups (None for full backups)
     #[serde(default)]
     pub base_backup_id: Option<String>,
+    /// Encryption format version ("v1" = old SHA-256, "v2" = Argon2id + AAD)
+    #[serde(default = "default_encryption_version")]
+    pub encryption_version: String,
+    /// KDF parameters (only for v2, None for legacy v1)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kdf_params: Option<crate::encryption::KdfParams>,
+}
+
+fn default_encryption_version() -> String {
+    "v2".to_string()
 }
 
 /// File metadata for diff operations (simplified version of FileEntry)
@@ -101,6 +111,11 @@ pub struct DirectUploadBackup {
 }
 
 impl DirectUploadBackup {
+    /// Returns the default encryption version for new backups
+    pub fn default_encryption_version() -> String {
+        "v2".to_string()
+    }
+    
     pub fn new(config: Config, hetzner: HetznerClient, encryption: EncryptionManager, bandwidth_limit: Option<u64>) -> Self {
         // Adaptive parallelism: Use 4 threads for normal systems, scale down if needed
         let max_parallel = std::thread::available_parallelism()
@@ -250,6 +265,8 @@ impl DirectUploadBackup {
             file_count,
             source_paths: paths.to_vec(),
             base_backup_id: base_backup_id.flatten(),
+            encryption_version: Self::default_encryption_version(),
+            kdf_params: Some(self.encryption.kdf_params().clone()),
         };
         
         // Upload manifest
