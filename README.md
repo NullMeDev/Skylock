@@ -23,8 +23,11 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 **Backup Operations**
 - Direct upload mode: per-file streaming with parallel uploads
 - Archive mode: tar.zst.enc compressed archives (legacy)
+- **Incremental backups**: Only upload changed files since last backup
+- **File change tracking**: Detect added, removed, and modified files
 - Resume interrupted uploads: automatic state tracking and recovery
 - Bandwidth throttling: configurable upload speed limiting
+- **Backup verification**: Check integrity and detect corruption
 - File-level deduplication and metadata tracking
 - Backup manifest system with JSON metadata
 - Professional backup ID structure (backup_YYYYMMDD_HHMMSS)
@@ -45,11 +48,14 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - Streaming compression for memory efficiency
 
 **CLI Interface**
-- `backup` - Create backups with direct or archive mode
+- `backup` - Create backups with direct or archive mode (supports --incremental)
 - `list` - List all backups with metadata
 - `restore` - Restore entire backups or individual files
 - `restore-file` - Restore single files from direct upload backups
 - `diff` - Compare two backups and show differences
+- `changes` - Show file changes since last backup
+- `verify` - Verify backup integrity (quick or full hash verification)
+- `cleanup` - Clean up old backups based on retention policy
 - `schedule` - Validate and test cron expressions, show presets
 - `test` - Test cloud storage connections
 - `config` - Configuration management commands
@@ -104,20 +110,25 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - ✅ Interactive confirmation for deletions
 - ✅ Detailed deletion summary and statistics
 
-### In Progress (Next Releases)
-
-**High Priority - Automation & Reliability**
+**Advanced Backup Features (Latest)**
+- ✅ File change tracking with SHA-256 hash verification
+- ✅ Incremental backup mode (only changed files)
+- ✅ Backup verification command (quick and full modes)
 - ✅ Resume interrupted uploads (automatic state tracking)
 - ✅ Bandwidth throttling and rate limiting
 - ✅ Cron expression support for flexible scheduling
 - ✅ Backup diff/comparison tools
+
+### In Progress (Next Releases)
+
+**High Priority - Automation & Reliability**
 - System snapshot capability for full system recovery
+- Real-time file system monitoring (inotify/FSEvents)
 
 **Medium Priority - Enhanced Functionality**
-- Real-time file system monitoring and change detection
-- Incremental backups (only changed files)
 - Parallel restore for faster recovery
 - System tray integration (GUI status indicator)
+- Cloud-to-cloud backup migration
 
 ### Planned
 
