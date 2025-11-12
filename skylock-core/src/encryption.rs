@@ -115,7 +115,24 @@ impl EncryptionManager {
                 "encryption_manager".to_string(),
             ))?;
             
-        let argon2 = Argon2::default();
+        // Use explicit strong Argon2id parameters (64 MiB, 4 iterations, 4 threads)
+        let argon2_params = argon2::Params::new(
+            65536,  // 64 MiB memory cost
+            4,      // 4 iterations
+            4,      // 4 threads
+            Some(32)
+        ).map_err(|e| Error::new(
+            ErrorCategory::Security(SecurityErrorType::KeyNotFound),
+            ErrorSeverity::High,
+            format!("Invalid Argon2 params: {}", e),
+            "encryption_manager".to_string(),
+        ))?;
+        
+        let argon2 = Argon2::new(
+            argon2::Algorithm::Argon2id,
+            argon2::Version::V0x13,
+            argon2_params,
+        );
         let mut key = [0u8; 32];
         argon2
             .hash_password_into(password.as_bytes(), salt.as_str().as_bytes(), &mut key)

@@ -6,6 +6,7 @@ pub mod hsm;
 pub mod key_manager;
 pub mod monitoring;
 pub mod versioning;
+pub mod nonce_derivation;
 
 // Re-export common types
 pub use backup::BackupManager;

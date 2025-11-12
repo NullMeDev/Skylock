@@ -56,6 +56,7 @@ sha2 = "0.10"
 zeroize = { version = "1.6", features = ["derive"] }
 base64 = "0.21"
 chacha20poly1305 = "0.10"
+hkdf = "0.12"
 md5 = "0.7"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 notify = "6.1"

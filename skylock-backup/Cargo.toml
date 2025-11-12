@@ -23,6 +23,13 @@ sha2 = "0.10"
 base64 = "0.22"
 argon2 = "0.5"
 zeroize = { version = "1.8", features = ["derive"] }
+hmac = "0.12"
+hkdf = "0.12"
+ed25519-dalek = { version = "2.0", features = ["rand_core"] }
+zxcvbn = "2.2"
+subtle = "2.6"
+hex = "0.4"
+colored = "2.0"
 
 # Compression
 zstd = "0.13"

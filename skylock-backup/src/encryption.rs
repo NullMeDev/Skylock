@@ -40,9 +40,9 @@ impl Default for KdfParams {
     fn default() -> Self {
         Self {
             algorithm: "Argon2id".to_string(),
-            memory_cost: 65536,  // 64 MiB (NIST minimum)
-            time_cost: 3,         // 3 iterations (RFC 9106)
-            parallelism: 1,       // Single-threaded
+            memory_cost: 65536,  // 64 MiB
+            time_cost: 4,         // 4 iterations (stronger than RFC 9106 minimum)
+            parallelism: 4,       // 4 threads for better GPU resistance
             salt: String::new(),
             version: 0x13,        // Argon2 v1.3
         }
@@ -54,9 +54,9 @@ impl KdfParams {
     pub fn paranoid() -> Self {
         Self {
             algorithm: "Argon2id".to_string(),
-            memory_cost: 262144,  // 256 MiB
-            time_cost: 5,         // 5 iterations
-            parallelism: 4,       // 4 threads
+            memory_cost: 524288,  // 512 MiB
+            time_cost: 8,         // 8 iterations
+            parallelism: 8,       // 8 threads
             salt: String::new(),
             version: 0x13,
         }

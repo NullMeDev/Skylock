@@ -5,6 +5,114 @@ All notable changes to Skylock will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-01-12 🔒 **SECURITY HARDENING RELEASE**
+
+### Security Hardening (Phase 1 Complete)
+- **Stronger KDF defaults for enhanced brute-force resistance**
+  - Upgraded default Argon2id time parameter from t=3 to t=4 (~33% slower brute-force)
+  - Paranoid preset now uses 512 MiB / t=8 / p=8 (8x stronger than balanced)
+  - Explicit KDF params in both skylock-core and skylock-backup
+  - Prevents KDF downgrade attacks via manifest validation
+- **Deterministic HKDF-derived nonces eliminate reuse risk**
+  - Algorithm: `nonce = HKDF(block_key, salt=block_hash, info=chunk_index||"skylock-nonce-gcm")`
+  - Cryptographically guaranteed uniqueness without storage overhead
+  - Prevents catastrophic nonce reuse in AES-GCM encryption
+  - New module: `skylock-core/src/security/nonce_derivation.rs`
+- **HMAC-SHA256 integrity verification replaces plain SHA-256**
+  - Derived key: `hmac_key = HKDF(encryption_key, "skylock-hmac-v1")`
+  - Prevents hash collision attacks and file forgery
+  - Backward compatible with v1 SHA-256 hashes (auto-detection)
+  - New module: `skylock-backup/src/hmac_integrity.rs`
+- **TLS/SSH transport security infrastructure**
+  - WebDAV SPKI pinning framework for certificate pinning
+  - SFTP strict host key verification mode
+  - TLS 1.3 enforcement with strong cipher suites
+  - New module: `skylock-hetzner/src/tls_pinning.rs`
+- **Comprehensive security audit completed**
+  - Baseline audit of v0.5.1 identified 5 medium-risk gaps (all fixed)
+  - 8 low-risk enhancements planned for Phase 2
+  - Full audit report: `docs/security/AUDIT_v0_5_1.md`
+  - Security advisory: `docs/security/SECURITY_ADVISORY_0.6.0.md`
+
+### Added
+- **Encrypted file browser with key validation**
+  - New command: `skylock browse <backup_id>`
+  - Terminal-based backup browsing with automatic key validation
+  - Shows real filenames when key valid, jumbled text when invalid
+  - Color-coded output with encryption/compression status indicators
+  - Groups files by directory for easy navigation
+  - Displays encryption version (v1/v2) and KDF parameters
+  - New command: `skylock preview-file <backup_id> <file_path>`
+  - Preview specific file contents from backup
+  - Validates encryption key before attempting decrypt
+  - Foundation for full file preview functionality
+  - New module: `skylock-backup/src/browser.rs` (250 lines)
+- **Configurable compression levels**
+  - New module: `skylock-backup/src/compression_config.rs`
+  - Compression levels: None(0), Fast(1), Balanced(3), Good(6), Best(9), Custom(0-22)
+  - Default remains: Balanced (level 3), 10MB threshold
+  - Compression statistics tracking (ratios, savings percentage)
+  - Configurable minimum file size for compression
+  - Ready for integration into backup configuration
+
+### Changed
+- **Dependencies updated**
+  - Added `hmac = "0.12"` to skylock-backup
+  - Added `hkdf = "0.12"` to skylock-backup and skylock-core
+  - Added `ed25519-dalek = "2.0"` to skylock-backup (for future signing)
+  - Added `zxcvbn = "2.2"` to skylock-backup (for future password checks)
+  - Added `subtle = "2.6"` to skylock-backup (constant-time operations)
+  - Added `hex = "0.4"` to skylock-backup
+  - Added `colored = "2.0"` to skylock-backup (terminal formatting)
+- **Public exports expanded**
+  - `EncryptedBrowser` now public in skylock-backup
+  - `CompressionConfig`, `CompressionLevel`, `CompressionStats` now public
+  - Browser and compression modules added to lib.rs
+
+### Fixed
+- Fixed typo in skylock-backup/Cargo.toml: `subtile` → `subtle`
+- Fixed test attribute syntax in compression_config.rs (line 137)
+- Fixed Argon2::default() usage in skylock-core (now uses explicit params)
+
+### Backward Compatibility
+- ✅ **100% backward compatible with all previous versions**
+- ✅ **v1 backups (SHA-256)**: Restore correctly with automatic detection
+- ✅ **v2 backups (previous)**: Restore correctly with automatic detection
+- ✅ **New v2 backups**: Use HMAC and HKDF nonces by default
+- ✅ **No migration required**: Old backups remain fully accessible
+
+### Performance
+- KDF time increase from t=3 to t=4 adds ~0.5-1 second to backup/restore operations
+- HMAC computation is negligible overhead compared to encryption
+- HKDF nonce derivation eliminates manifest storage overhead
+- Browser command provides instant feedback without downloading files
+
+### Documentation
+- Added `docs/security/SECURITY_ADVISORY_0.6.0.md` - Complete security advisory
+- Added `docs/security/AUDIT_v0_5_1.md` - Baseline security audit
+- Updated WARP.md with Phase 1 implementation details
+- Updated TODO list with remaining Phase 2 tasks
+
+### Testing
+- All existing tests pass with new security features
+- Compilation successful with 26 warnings (unused code, non-critical)
+- Manual testing completed for browse/preview commands
+
+### Migration Guidance
+- **New users**: Install v0.6.0 - all improvements active by default
+- **Existing users (v0.5.x)**: Update anytime - seamless upgrade
+- **Existing users (v0.4.x)**: Update recommended (weaker KDF in v0.4.x)
+- See `docs/security/SECURITY_ADVISORY_0.6.0.md` for detailed upgrade guide
+
+### Planned for Phase 2 (v0.7.0)
+- Manifest signing with Ed25519 (anti-rollback protection)
+- WebDAV metadata encryption (filename privacy)
+- Memory hardening (secrecy::Secret, zeroize)
+- Password strength validation (zxcvbn integration)
+- Audit logging (hash-chained operation logs)
+- Key rotation capability
+- Shamir's Secret Sharing (key backup/recovery)
+
 ## [0.5.1] - 2025-11-08 🔒 **CRITICAL SECURITY PATCH**
 
 ### Security

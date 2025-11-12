@@ -137,6 +137,21 @@ enum Commands {
         #[arg(short, long)]
         target: Option<PathBuf>,
     },
+    /// Browse encrypted backup with key validation
+    Browse {
+        /// Backup ID to browse
+        backup_id: String,
+    },
+    /// Preview specific file from backup
+    PreviewFile {
+        /// Backup ID
+        backup_id: String,
+        /// File path within backup
+        file_path: String,
+        /// Maximum lines to display
+        #[arg(short, long, default_value = "50")]
+        lines: usize,
+    },
     /// List available backups
     List {
         /// Show detailed information
@@ -234,6 +249,12 @@ async fn handle_command(command: Commands, config_path: Option<PathBuf>) -> Resu
         }
         Commands::Preview { backup_id, target } => {
             perform_preview(backup_id, target, config_path).await
+        }
+        Commands::Browse { backup_id } => {
+            perform_browse(backup_id, config_path).await
+        }
+        Commands::PreviewFile { backup_id, file_path, lines } => {
+            perform_preview_file(backup_id, file_path, lines, config_path).await
         }
         Commands::Restore { backup_id, target, paths } => {
             perform_restore(backup_id, target, paths, config_path).await
@@ -728,6 +749,107 @@ async fn perform_preview(backup_id: String, target: Option<PathBuf>, config_path
             println!("{}", "✅ No conflicts - safe to restore".bright_green());
         }
     }
+    
+    Ok(())
+}
+
+async fn perform_browse(backup_id: String, config_path: Option<PathBuf>) -> Result<()> {
+    use progress::ErrorHandler;
+    
+    // Load configuration
+    let config = match Config::load(config_path) {
+        Ok(config) => config,
+        Err(e) => {
+            ErrorHandler::print_error("Configuration Error", &e.to_string());
+            return Err(anyhow::anyhow!("Configuration required"));
+        }
+    };
+    
+    if config.hetzner.username == "your-username" {
+        ErrorHandler::print_error("Credentials Error", "Hetzner credentials not configured");
+        return Err(anyhow::anyhow!("Hetzner credentials required"));
+    }
+    
+    // Create Hetzner client
+    let hetzner_config = skylock_hetzner::HetznerConfig {
+        endpoint: config.hetzner.endpoint.clone(),
+        username: config.hetzner.username.clone(),
+        password: config.hetzner.password.clone(),
+        api_token: config.hetzner.encryption_key.clone(),
+        encryption_key: config.hetzner.encryption_key.clone(),
+    };
+    
+    let hetzner_client = match skylock_hetzner::HetznerClient::new(hetzner_config) {
+        Ok(client) => client,
+        Err(e) => {
+            ErrorHandler::print_error("Client Error", &e.to_string());
+            return Err(anyhow::anyhow!("Failed to initialize Hetzner client"));
+        }
+    };
+    
+    // Create encryption manager
+    let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
+        .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
+    
+    // Create direct upload backup manager (no bandwidth limit for browsing)
+    let direct_backup = skylock_backup::DirectUploadBackup::new(config, hetzner_client, encryption, None);
+    
+    // Create browser and browse
+    let browser = skylock_backup::EncryptedBrowser::new(direct_backup);
+    browser.browse(&backup_id).await?;
+    
+    Ok(())
+}
+
+async fn perform_preview_file(
+    backup_id: String,
+    file_path: String,
+    max_lines: usize,
+    config_path: Option<PathBuf>,
+) -> Result<()> {
+    use progress::ErrorHandler;
+    
+    // Load configuration
+    let config = match Config::load(config_path) {
+        Ok(config) => config,
+        Err(e) => {
+            ErrorHandler::print_error("Configuration Error", &e.to_string());
+            return Err(anyhow::anyhow!("Configuration required"));
+        }
+    };
+    
+    if config.hetzner.username == "your-username" {
+        ErrorHandler::print_error("Credentials Error", "Hetzner credentials not configured");
+        return Err(anyhow::anyhow!("Hetzner credentials required"));
+    }
+    
+    // Create Hetzner client
+    let hetzner_config = skylock_hetzner::HetznerConfig {
+        endpoint: config.hetzner.endpoint.clone(),
+        username: config.hetzner.username.clone(),
+        password: config.hetzner.password.clone(),
+        api_token: config.hetzner.encryption_key.clone(),
+        encryption_key: config.hetzner.encryption_key.clone(),
+    };
+    
+    let hetzner_client = match skylock_hetzner::HetznerClient::new(hetzner_config) {
+        Ok(client) => client,
+        Err(e) => {
+            ErrorHandler::print_error("Client Error", &e.to_string());
+            return Err(anyhow::anyhow!("Failed to initialize Hetzner client"));
+        }
+    };
+    
+    // Create encryption manager
+    let encryption = skylock_backup::encryption::EncryptionManager::new(&config.hetzner.encryption_key)
+        .map_err(|e| anyhow::anyhow!("Failed to create encryption: {}", e))?;
+    
+    // Create direct upload backup manager (no bandwidth limit for preview)
+    let direct_backup = skylock_backup::DirectUploadBackup::new(config, hetzner_client, encryption, None);
+    
+    // Create browser and preview file
+    let browser = skylock_backup::EncryptedBrowser::new(direct_backup);
+    browser.preview_file(&backup_id, &file_path, max_lines).await?;
     
     Ok(())
 }
