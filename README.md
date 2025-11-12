@@ -1,9 +1,10 @@
 # Skylock
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/NullMeDev/Skylock/releases)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)](https://github.com/NullMeDev/Skylock/releases)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](.github/workflows/ci.yml)
+[![Security](https://img.shields.io/badge/security-hardened-success.svg)](docs/security/SECURITY_ADVISORY_0.6.0.md)
 
 **Contact:** null@nullme.lol
 
@@ -13,11 +14,13 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 
 ### Implemented
 
-**Core Security**
+**Core Security** (🔒 Enhanced in v0.6.0)
 - AES-256-GCM client-side encryption with authenticated encryption (AEAD)
-- Argon2id key derivation for password-based keys
-- Per-file encryption with unique nonces and integrity verification
-- TLS 1.3 transport security for all network communications
+- Argon2id key derivation (64 MiB, t=4, p=4) - **upgraded in v0.6.0**
+- HKDF-derived deterministic nonces (eliminates reuse risk) - **new in v0.6.0**
+- HMAC-SHA256 integrity verification (prevents collision attacks) - **new in v0.6.0**
+- Per-file encryption with unique nonces and AAD binding
+- TLS 1.3 transport security with SPKI pinning support - **new in v0.6.0**
 - Ed25519 SSH key authentication support for SFTP
 
 **Backup Operations**
@@ -42,13 +45,18 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - Connection testing and validation
 - Configurable storage paths and endpoints
 
-**Compression**
-- Zstd compression (level 3) for files >10MB
+**Compression** (⚙️ Enhanced in v0.6.0)
+- Zstd compression with configurable levels (0-22) - **new in v0.6.0**
+- Default: Balanced (level 3) for files >10MB
+- Levels: None, Fast(1), Balanced(3), Good(6), Best(9), Custom
+- Compression statistics and ratio tracking - **new in v0.6.0**
 - Smart compression: only compresses when beneficial
 - Streaming compression for memory efficiency
 
 **CLI Interface**
 - `backup` - Create backups with direct or archive mode (supports --incremental)
+- `browse` - Browse encrypted backup contents with key validation - **new in v0.6.0** 🔍
+- `preview-file` - Preview specific files from backups - **new in v0.6.0** 📄
 - `list` - List all backups with metadata
 - `restore` - Restore entire backups or individual files
 - `restore-file` - Restore single files from direct upload backups
@@ -110,14 +118,24 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - ✅ Interactive confirmation for deletions
 - ✅ Detailed deletion summary and statistics
 
-**Advanced Backup Features (Latest)**
-- ✅ File change tracking with SHA-256 hash verification
+**Advanced Backup Features (v0.5.0)**
+- ✅ File change tracking with HMAC-SHA256 verification
 - ✅ Incremental backup mode (only changed files)
 - ✅ Backup verification command (quick and full modes)
 - ✅ Resume interrupted uploads (automatic state tracking)
 - ✅ Bandwidth throttling and rate limiting
 - ✅ Cron expression support for flexible scheduling
 - ✅ Backup diff/comparison tools
+
+**Security Hardening (v0.6.0)** 🔒
+- ✅ **Stronger KDF defaults**: Argon2id (64 MiB, t=4, p=4) - 33% brute-force resistance increase
+- ✅ **HKDF-derived nonces**: Deterministic, eliminates catastrophic nonce reuse risk
+- ✅ **HMAC-SHA256 integrity**: Replaces SHA-256, prevents collision attacks
+- ✅ **TLS/SSH security**: SPKI pinning framework and strict host verification
+- ✅ **Encrypted file browser**: Browse backups with automatic key validation (`skylock browse`)
+- ✅ **Configurable compression**: Levels 0-22 with statistics tracking
+- ✅ **Security audit**: Comprehensive v0.5.1 baseline audit completed
+- ✅ **100% backward compatible**: All v1/v2 backups restore correctly
 
 ### In Progress (Next Releases)
 
@@ -233,6 +251,10 @@ skylock verify backup_20251107_120000 --full   # Full verification (verify hashe
 skylock schedule "0 0 2 * * *"     # Validate and show next runs
 skylock schedule --presets         # Show common presets
 
+# Browse encrypted backup (v0.6.0+)
+skylock browse backup_20250112_020000        # Browse files with key validation
+skylock preview-file <backup_id> <path>     # Preview specific file
+
 # Test connection
 skylock test hetzner
 ```
@@ -318,13 +340,26 @@ Have an idea? Please [open an issue](https://github.com/NullMeDev/Skylock/issues
 
 ## Documentation
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) - Contributing guidelines
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) - Code of conduct
-- [SECURITY.md](SECURITY.md) - Security guide and best practices
-- [SECURITY_AUDIT.md](SECURITY_AUDIT.md) - Security audit details
+### User Guides
 - [USAGE.md](USAGE.md) - Detailed usage guide
 - [RESTORE_GUIDE.md](RESTORE_GUIDE.md) - Complete restore and recovery guide
 - [SCHEDULING_GUIDE.md](SCHEDULING_GUIDE.md) - Automated scheduling and notifications guide
+- [INCREMENTAL_BACKUP_GUIDE.md](INCREMENTAL_BACKUP_GUIDE.md) - Incremental backup guide
+- [VERIFICATION_GUIDE.md](VERIFICATION_GUIDE.md) - Backup verification guide
+
+### Security Documentation
+- [SECURITY.md](SECURITY.md) - Security architecture and best practices
+- [SECURITY_AUDIT.md](SECURITY_AUDIT.md) - Pre-release security audit
+- [docs/security/AUDIT_v0_5_1.md](docs/security/AUDIT_v0_5_1.md) - v0.5.1 baseline audit (v0.6.0)
+- [docs/security/SECURITY_ADVISORY_0.6.0.md](docs/security/SECURITY_ADVISORY_0.6.0.md) - v0.6.0 security advisory
+
+### Release Information
+- [CHANGELOG.md](CHANGELOG.md) - Complete version history
+- [RELEASE_NOTES_v0.6.0.md](RELEASE_NOTES_v0.6.0.md) - v0.6.0 release notes
+
+### Contributing
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Contributing guidelines
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) - Code of conduct
 
 ## License
 
