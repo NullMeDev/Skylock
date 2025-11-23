@@ -25,7 +25,9 @@ argon2 = "0.5"
 zeroize = { version = "1.8", features = ["derive"] }
 hmac = "0.12"
 hkdf = "0.12"
-ed25519-dalek = { version = "2.0", features = ["rand_core"] }
+ed25519-dalek = { version = "2.0", features = ["rand_core", "pkcs8"] }
+pkcs8 = { version = "0.10", features = ["pem"] }
+uuid = { version = "1.4", features = ["v4", "serde"] }
 zxcvbn = "2.2"
 subtle = "2.6"
 hex = "0.4"

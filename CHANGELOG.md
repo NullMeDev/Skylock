@@ -104,14 +104,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Existing users (v0.4.x)**: Update recommended (weaker KDF in v0.4.x)
 - See `docs/security/SECURITY_ADVISORY_0.6.0.md` for detailed upgrade guide
 
+### Added (Phase 1.5 - Infrastructure Complete)
+- **Ed25519 Manifest Signing Infrastructure** 🆕
+  - Core signing/verification module: `skylock-backup/src/manifest_signing.rs` (459 lines)
+  - Anti-rollback protection with monotonic chain versions
+  - Key rotation detection and prevention
+  - Comprehensive unit tests (4 test cases: signing, tampering, rollback, key rotation)
+  - CLI integration planned for v0.7.0
+  - Documentation: `docs/security/MANIFEST_SIGNING_IMPLEMENTATION.md`
+- **WebDAV Metadata Encryption Infrastructure** 🆕
+  - Path encryption module: `skylock-hetzner/src/metadata_encryption.rs` (419 lines)
+  - AES-256-GCM encryption for remote paths (hides filenames from storage provider)
+  - HKDF-derived metadata key: `HKDF(encryption_key, "skylock-metadata-v1")`
+  - URL-safe base64 encoding for WebDAV compatibility
+  - Bidirectional path mapping for efficient lookups
+  - Comprehensive unit tests (9 test cases)
+  - Integration with DirectUploadBackup planned for v0.7.0
+
 ### Planned for Phase 2 (v0.7.0)
-- Manifest signing with Ed25519 (anti-rollback protection)
-- WebDAV metadata encryption (filename privacy)
-- Memory hardening (secrecy::Secret, zeroize)
-- Password strength validation (zxcvbn integration)
-- Audit logging (hash-chained operation logs)
-- Key rotation capability
-- Shamir's Secret Sharing (key backup/recovery)
+- ✅ Manifest signing infrastructure (DONE - CLI integration pending)
+- ✅ WebDAV metadata encryption infrastructure (DONE - integration pending)
+- 📋 Manifest signing CLI (`skylock key` commands)
+- 📋 Metadata encryption integration (upload/restore flows)
+- 📋 Memory hardening (secrecy::Secret, zeroize)
+- 📋 Password strength validation (zxcvbn integration)
+- 📋 Audit logging (hash-chained operation logs)
+- 📋 Key rotation capability
+- 📋 Shamir's Secret Sharing (key backup/recovery)
 
 ## [0.5.1] - 2025-11-08 🔒 **CRITICAL SECURITY PATCH**
 

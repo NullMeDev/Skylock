@@ -6,6 +6,9 @@ pub enum SkylockError {
     Encryption(String),
     #[error("Backup error: {0}")]
     Backup(String),
+    
+    #[error("Cryptography error: {0}")]
+    Crypto(String),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

@@ -67,6 +67,31 @@ pub struct BackupManifest {
     /// KDF parameters (only for v2, None for legacy v1)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kdf_params: Option<crate::encryption::KdfParams>,
+    /// Digital signature for manifest integrity (v3+)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<ManifestSignature>,
+    /// Monotonically increasing version for anti-rollback (v3+)
+    #[serde(default)]
+    pub backup_chain_version: u64,
+    /// Encrypted path mapping (metadata privacy feature)
+    /// Maps plaintext local paths to encrypted remote paths
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_path_map: Option<std::collections::HashMap<String, String>>,
+}
+
+/// Digital signature metadata for manifest integrity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestSignature {
+    /// Signature algorithm ("Ed25519")
+    pub algorithm: String,
+    /// Public key fingerprint (SHA-256 hash of public key, first 8 bytes hex)
+    pub fingerprint: String,
+    /// Ed25519 signature bytes (64 bytes, hex-encoded)
+    pub signature_hex: String,
+    /// When signature was created
+    pub signed_at: DateTime<Utc>,
+    /// Key ID used for signing
+    pub key_id: String,
 }
 
 fn default_encryption_version() -> String {
@@ -267,6 +292,9 @@ impl DirectUploadBackup {
             base_backup_id: base_backup_id.flatten(),
             encryption_version: Self::default_encryption_version(),
             kdf_params: Some(self.encryption.kdf_params().clone()),
+            signature: None,  // Signature will be added later if enabled
+            backup_chain_version: 0,  // Will be set during signing
+            encrypted_path_map: None,  // Will be populated if metadata encryption enabled
         };
         
         // Upload manifest

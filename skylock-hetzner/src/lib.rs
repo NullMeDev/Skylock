@@ -3,6 +3,7 @@ mod sftp_secure;
 mod api;
 mod webdav;
 mod tls_pinning;
+pub mod metadata_encryption;
 
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncReadExt;
@@ -18,6 +19,7 @@ pub use sftp::SftpClient;
 pub use sftp_secure::{SecureSftpClient, SecureSftpConfig, generate_ed25519_keypair};
 pub use webdav::{HetznerWebDAVClient, WebDAVConfig};
 pub use tls_pinning::{TlsPinningConfig, compute_spki_hash, verify_spki_hash};
+pub use metadata_encryption::{PathEncryptor, PathMapping, MetadataEncryptionError};
 
 #[allow(dead_code)]
 const USER_AGENT: &str = "Skylock-Hybrid/1.0";
