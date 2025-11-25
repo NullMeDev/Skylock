@@ -1210,12 +1210,12 @@ async fn test_encryption() -> Result<()> {
     println!("📝 Test data: {} bytes", test_data.len());
     
     // Encrypt block
-    match encryption_manager.encrypt_block(test_data, block_hash).await {
+    match encryption_manager.encrypt_block(test_data, block_hash, 0).await {
         Ok(encrypted) => {
             println!("✅ Block encryption successful: {} bytes", encrypted.len());
             
             // Decrypt block
-            match encryption_manager.decrypt_block(&encrypted, block_hash).await {
+            match encryption_manager.decrypt_block(&encrypted, block_hash, 0).await {
                 Ok(decrypted) => {
                     if decrypted == test_data {
                         println!("✅ Block decryption successful and data matches!");

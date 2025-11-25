@@ -8,6 +8,8 @@ use chacha20poly1305::{
     XChaCha20Poly1305,
     aead::{Payload, generic_array::GenericArray, Aead as ChachaAead, AeadCore as ChachaAeadCore, KeyInit as ChachaKeyInit},
 };
+use hkdf::Hkdf;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 use crate::{
     Result, SkylockError,
     error_types::{Error, ErrorCategory, ErrorSeverity, SecurityErrorType},
@@ -66,15 +68,32 @@ pub trait EncryptionEngine: Send + Sync {
 const KEYS_FILE: &str = "block_keys.json";
 const METADATA_FILE: &str = "encryption_metadata.json";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct BlockKey {
+    #[serde(with = "serde_bytes")]
     key: [u8; 32],
-    nonce: [u8; 24],
+    // Nonce is now derived per-chunk using HKDF
+    #[zeroize(skip)]
     block_hash: String,
+    #[zeroize(skip)]
     key_type: KeyType,
+    #[zeroize(skip)]
     status: KeyStatus,
+    #[zeroize(skip)]
     created_at: chrono::DateTime<chrono::Utc>,
+    #[zeroize(skip)]
     last_used: chrono::DateTime<chrono::Utc>,
+}
+
+impl std::fmt::Debug for BlockKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BlockKey")
+            .field("key", &"[REDACTED]")
+            .field("block_hash", &self.block_hash)
+            .field("key_type", &self.key_type)
+            .field("status", &self.status)
+            .finish()
+    }
 }
 
 pub struct EncryptionManager {
@@ -216,13 +235,10 @@ impl EncryptionManager {
         }
 
         let mut new_key = [0u8; 32];
-        let mut new_nonce = [0u8; 24];
         OsRng.fill_bytes(&mut new_key);
-        OsRng.fill_bytes(&mut new_nonce);
 
         let block_key = BlockKey {
             key: new_key,
-            nonce: new_nonce,
             block_hash: block_hash.to_string(),
             key_type: KeyType::Block,
             status: KeyStatus::Valid,
@@ -239,13 +255,26 @@ impl EncryptionManager {
         Ok(block_key)
     }
 
+    /// Derives a unique nonce for each chunk using HKDF
+    /// This ensures cryptographic uniqueness even if the same data is encrypted multiple times
+    fn derive_nonce(block_key: &[u8; 32], chunk_index: u64) -> Result<[u8; 24]> {
+        let hkdf = Hkdf::<Sha256>::new(None, block_key);
+        let info = format!("skylock-chunk-nonce-v1-{}", chunk_index);
+        let mut nonce = [0u8; 24];
+        hkdf.expand(info.as_bytes(), &mut nonce)
+            .map_err(|e| SkylockError::Encryption(format!("Nonce derivation failed: {}", e)))?;
+        Ok(nonce)
+    }
+
     #[tracing::instrument(skip(self, data))]
-    pub async fn encrypt_block(&self, data: &[u8], block_hash: &str) -> Result<Vec<u8>> {
+    pub async fn encrypt_block(&self, data: &[u8], block_hash: &str, chunk_index: u64) -> Result<Vec<u8>> {
         let block_key = self.get_or_create_block_key(block_hash).await?;
         let aad = block_hash.as_bytes();
         let payload = Payload { msg: data, aad };
 
-        let nonce = GenericArray::from_slice(&block_key.nonce);
+        // Derive unique nonce for this chunk
+        let nonce_bytes = Self::derive_nonce(&block_key.key, chunk_index)?;
+        let nonce = GenericArray::from_slice(&nonce_bytes);
         let key = GenericArray::from_slice(&block_key.key);
         let cipher = XChaCha20Poly1305::new(key);
         
@@ -254,12 +283,14 @@ impl EncryptionManager {
     }
 
     #[tracing::instrument(skip(self, data))]
-    pub async fn decrypt_block(&self, data: &[u8], block_hash: &str) -> Result<Vec<u8>> {
+    pub async fn decrypt_block(&self, data: &[u8], block_hash: &str, chunk_index: u64) -> Result<Vec<u8>> {
         let block_key = self.get_or_create_block_key(block_hash).await?;
         let aad = block_hash.as_bytes();
         let payload = Payload { msg: data, aad };
 
-        let nonce = GenericArray::from_slice(&block_key.nonce);
+        // Derive unique nonce for this chunk
+        let nonce_bytes = Self::derive_nonce(&block_key.key, chunk_index)?;
+        let nonce = GenericArray::from_slice(&nonce_bytes);
         let key = GenericArray::from_slice(&block_key.key);
         let cipher = XChaCha20Poly1305::new(key);
         
@@ -275,6 +306,25 @@ impl EncryptionManager {
     }
 
     pub async fn encrypt_file(&self, source: &Path, dest: &Path) -> Result<()> {
+        // CRIT-004 Fix: Check file size limit (10GB)
+        const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024 * 1024;
+        let metadata = tokio::fs::metadata(source).await
+            .map_err(|e| Error::new(
+                ErrorCategory::Security(SecurityErrorType::EncryptionFailed),
+                ErrorSeverity::High,
+                format!("Failed to get file metadata: {}", e),
+                "encryption_manager".to_string(),
+            ))?;
+        
+        if metadata.len() > MAX_FILE_SIZE {
+            return Err(Error::new(
+                ErrorCategory::Security(SecurityErrorType::EncryptionFailed),
+                ErrorSeverity::High,
+                format!("File too large: {} bytes (max: {} bytes)", metadata.len(), MAX_FILE_SIZE),
+                "encryption_manager".to_string(),
+            ).into());
+        }
+
         let mut source_file = File::open(source)
             .await
             .map_err(|e| Error::new(
@@ -294,6 +344,7 @@ impl EncryptionManager {
             ))?;
 
         let mut buffer = vec![0u8; 1024 * 1024]; // 1MB chunks
+        let mut chunk_index: u64 = 0;
         
         loop {
             let n = source_file.read(&mut buffer).await
@@ -312,7 +363,9 @@ impl EncryptionManager {
             hasher.update(&buffer[..n]);
             let chunk_hash = format!("{:x}", hasher.finalize());
             
-            let encrypted_chunk = self.encrypt_block(&buffer[..n], &chunk_hash).await?;
+            // CRIT-001 Fix: Pass chunk_index to derive unique nonce
+            let encrypted_chunk = self.encrypt_block(&buffer[..n], &chunk_hash, chunk_index).await?;
+            chunk_index += 1;
             
             dest_file.write_all(&encrypted_chunk).await
                 .map_err(|e| Error::new(
@@ -328,6 +381,25 @@ impl EncryptionManager {
     }
 
     pub async fn decrypt_file(&self, source: &Path, dest: &Path) -> Result<()> {
+        // CRIT-004 Fix: Check file size limit (10GB)
+        const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024 * 1024;
+        let metadata = tokio::fs::metadata(source).await
+            .map_err(|e| Error::new(
+                ErrorCategory::Security(SecurityErrorType::DecryptionFailed),
+                ErrorSeverity::High,
+                format!("Failed to get file metadata: {}", e),
+                "encryption_manager".to_string(),
+            ))?;
+        
+        if metadata.len() > MAX_FILE_SIZE {
+            return Err(Error::new(
+                ErrorCategory::Security(SecurityErrorType::DecryptionFailed),
+                ErrorSeverity::High,
+                format!("File too large: {} bytes (max: {} bytes)", metadata.len(), MAX_FILE_SIZE),
+                "encryption_manager".to_string(),
+            ).into());
+        }
+
         let mut source_file = File::open(source)
             .await
             .map_err(|e| Error::new(
@@ -347,7 +419,7 @@ impl EncryptionManager {
             ))?;
 
         let mut buffer = vec![0u8; 1024 * 1024 + 40]; // 1MB chunk + overhead for authentication tag
-        let mut hasher = sha2::Sha256::new();
+        let mut chunk_index: u64 = 0;
         
         loop {
             let n = source_file.read(&mut buffer).await
@@ -360,9 +432,15 @@ impl EncryptionManager {
 
             if n == 0 { break; }
             
+            // CRIT-004 Fix: Use per-chunk hashing instead of accumulation
+            let mut hasher = sha2::Sha256::new();
             hasher.update(&buffer[..n]);
-            let chunk_hash = format!("{:x}", hasher.clone().finalize());
-            let decrypted_chunk = self.decrypt_block(&buffer[..n], &chunk_hash).await?;
+            let chunk_hash = format!("{:x}", hasher.finalize());
+            
+            // CRIT-001 Fix: Pass chunk_index to derive unique nonce
+            let decrypted_chunk = self.decrypt_block(&buffer[..n], &chunk_hash, chunk_index).await?;
+            chunk_index += 1;
+            
             dest_file.write_all(&decrypted_chunk).await
                 .map_err(|e| Error::new(
                     ErrorCategory::Security(SecurityErrorType::DecryptionFailed),
@@ -385,7 +463,8 @@ impl EncryptionEngine for EncryptionManager {
         let hash = format!("{:x}", hasher.finalize());
         
         tokio::runtime::Handle::current().block_on(async {
-            self.encrypt_block(data, &hash).await
+            // Single-block encryption uses chunk_index 0
+            self.encrypt_block(data, &hash, 0).await
         })
     }
 
@@ -395,7 +474,8 @@ impl EncryptionEngine for EncryptionManager {
         let hash = format!("{:x}", hasher.finalize());
         
         tokio::runtime::Handle::current().block_on(async {
-            self.decrypt_block(data, &hash).await
+            // Single-block decryption uses chunk_index 0
+            self.decrypt_block(data, &hash, 0).await
         })
     }
 
