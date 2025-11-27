@@ -33,6 +33,10 @@ subtle = "2.6"
 hex = "0.4"
 colored = "2.0"
 
+# Phase 3: E2E Enhancements
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+parking_lot = "0.12"
+
 # Compression
 zstd = "0.13"
 

@@ -25,6 +25,11 @@ pub mod parallel_hash;
 // Security and integrity modules
 pub mod encrypted_manifest;
 pub mod compression_integrity;
+
+// Phase 3: E2E Enhancements
+pub mod forward_secrecy;
+pub mod key_rotation;
+pub mod hsm_provider;
 pub use error::{Result, SkylockError};
 pub use direct_upload::{DirectUploadBackup, BackupManifest, FileEntry};
 pub use retention::{RetentionPolicy, RetentionManager, GfsPolicy};
@@ -51,6 +56,19 @@ pub use encrypted_manifest::{
 pub use compression_integrity::{
     CompressionVerifier, VerifiedCompression, VerifiedDecompression,
     CompressionMetadata, calculate_hash, verify_compressed_hash
+};
+
+// Phase 3: E2E Enhancements exports
+pub use forward_secrecy::{
+    EphemeralKeyExchange, SessionKey, SessionManager, SessionMetadata,
+    reconstruct_session_key
+};
+pub use key_rotation::{
+    KeyRotationPolicy, KeyVersion, KeyChain, KeyRotationManager, KeyChainInfo
+};
+pub use hsm_provider::{
+    HsmProvider, HsmKeyId, HsmProviderType, HsmKeyAlgorithm, HsmKeyUsage,
+    HsmKeyInfo, HsmSession, HsmConfig, HsmKeyManager, MockHsmProvider
 };
 use chrono::{DateTime, Utc};
 use skylock_core::Config;
