@@ -23,16 +23,16 @@ unix-zfs = []
 # Cloud storage backend dependencies (optional)
 aws-config = { version = "0.56", optional = true }
 aws-sdk-s3 = { version = "0.34", optional = true }
-azure_core = { version = "0.20", optional = true }
-azure_storage = { version = "0.20", optional = true }
-azure_storage_blobs = { version = "0.20", optional = true, features = ["azurite_workaround"] }
+azure_core = { version = "0.19", optional = true }
+azure_storage = { version = "0.19", optional = true }
+azure_storage_blobs = { version = "0.19", optional = true, features = ["azurite_workaround"] }
 google-cloud-storage = { version = "0.11", optional = true }
 backblaze-b2 = { version = "0.1", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_bytes = "0.11"
 thiserror = "1.0"
-toml = "0.8"
+toml = "0.7"
 directories = "5.0"
 tracing = "0.1"
 tokio = { version = "1.32", features = ["full", "test-util", "macros"] }
@@ -57,13 +57,13 @@ sha2 = "0.10"
 zeroize = { version = "1.6", features = ["derive"] }
 base64 = "0.21"
 chacha20poly1305 = "0.10"
-hkdf = "0.12"
 md5 = "0.7"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 notify = "6.1"
 dirs = "5.0"
 fs2 = "0.4"
 getrandom = "0.2"
+hkdf = "0.12"
 
 [dev-dependencies]
 tempfile = "3.8"

@@ -18,7 +18,10 @@ pub use api::{StorageBox, CreateStorageBoxRequest, StorageBoxCredentials};
 pub use sftp::SftpClient;
 pub use sftp_secure::{SecureSftpClient, SecureSftpConfig, generate_ed25519_keypair};
 pub use webdav::{HetznerWebDAVClient, WebDAVConfig};
-pub use tls_pinning::{TlsPinningConfig, compute_spki_hash, verify_spki_hash};
+pub use tls_pinning::{
+    TlsPinningConfig, CertificatePin, CertificatePinner, PinValidationResult,
+    compute_spki_hash, verify_spki_hash
+};
 pub use metadata_encryption::{PathEncryptor, PathMapping, MetadataEncryptionError};
 
 #[allow(dead_code)]

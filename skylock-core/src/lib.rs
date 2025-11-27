@@ -9,6 +9,7 @@ pub mod compression;
 pub mod storage;
 pub mod sync;
 pub mod error_types;
+pub mod audit;
 
 // Re-export error types
 pub use error_types::{Error, ErrorCategory, ErrorSeverity, SystemError};
