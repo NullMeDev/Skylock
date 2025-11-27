@@ -300,6 +300,11 @@ mod tests {
             files,
             source_paths: vec![],
             base_backup_id: None,
+            encryption_version: "v2".to_string(),
+            kdf_params: None,
+            signature: None,
+            backup_chain_version: 0,
+            encrypted_path_map: None,
         }
     }
 

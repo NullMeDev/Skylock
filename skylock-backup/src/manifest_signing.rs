@@ -353,6 +353,7 @@ mod tests {
             kdf_params: None,
             signature: None,
             backup_chain_version: 0,
+            encrypted_path_map: None,
         }
     }
     

@@ -23,6 +23,9 @@ use crate::encryption::EncryptionManager;
 use crate::resume_state::ResumeState;
 use crate::bandwidth::BandwidthLimiter;
 use crate::change_tracker::{ChangeTracker, FileIndex};
+use crate::parallelism::{ParallelismController, ParallelismConfig};
+use crate::chunking::{ChunkingController, ChunkingConfig};
+use crate::parallel_hash::{ParallelHasher, ParallelHashConfig};
 use skylock_core::Config;
 use skylock_hetzner::HetznerClient;
 
@@ -133,6 +136,12 @@ pub struct DirectUploadBackup {
     max_parallel: usize,
     /// Optional bandwidth limiter (bytes per second, None = unlimited)
     bandwidth_limiter: Option<Arc<BandwidthLimiter>>,
+    /// Dynamic parallelism controller for adaptive thread scaling
+    parallelism_controller: Option<Arc<ParallelismController>>,
+    /// Adaptive chunking controller for optimal chunk sizes
+    chunking_controller: Arc<ChunkingController>,
+    /// Parallel hasher for efficient file hashing
+    parallel_hasher: Arc<ParallelHasher>,
 }
 
 impl DirectUploadBackup {
@@ -151,13 +160,69 @@ impl DirectUploadBackup {
             Arc::new(BandwidthLimiter::new(limit))
         });
         
+        // Initialize performance optimization controllers
+        let chunking_controller = Arc::new(ChunkingController::new());
+        let parallel_hasher = Arc::new(ParallelHasher::new());
+        
         Self {
             config: Arc::new(config),
             hetzner: Arc::new(hetzner),
             encryption: Arc::new(encryption),
             max_parallel,
             bandwidth_limiter,
+            parallelism_controller: None, // Disabled by default for backward compatibility
+            chunking_controller,
+            parallel_hasher,
         }
+    }
+    
+    /// Create a new DirectUploadBackup with dynamic parallelism enabled
+    pub fn with_dynamic_parallelism(
+        config: Config,
+        hetzner: HetznerClient,
+        encryption: EncryptionManager,
+        bandwidth_limit: Option<u64>,
+    ) -> Self {
+        let parallelism_config = if bandwidth_limit.is_some() {
+            ParallelismConfig::default().with_bandwidth_limit(bandwidth_limit.unwrap())
+        } else {
+            ParallelismConfig::auto_detect()
+        };
+        
+        let parallelism_controller = Arc::new(ParallelismController::with_config(parallelism_config));
+        let max_parallel = parallelism_controller.current_parallelism();
+        
+        let bandwidth_limiter = bandwidth_limit.map(|limit| {
+            Arc::new(BandwidthLimiter::new(limit))
+        });
+        
+        let chunking_controller = Arc::new(ChunkingController::new());
+        let parallel_hasher = Arc::new(ParallelHasher::new());
+        
+        Self {
+            config: Arc::new(config),
+            hetzner: Arc::new(hetzner),
+            encryption: Arc::new(encryption),
+            max_parallel,
+            bandwidth_limiter,
+            parallelism_controller: Some(parallelism_controller),
+            chunking_controller,
+            parallel_hasher,
+        }
+    }
+    
+    /// Get the current parallelism level
+    pub fn current_parallelism(&self) -> usize {
+        if let Some(ref controller) = self.parallelism_controller {
+            controller.current_parallelism()
+        } else {
+            self.max_parallel
+        }
+    }
+    
+    /// Get optimal chunk size for a file
+    pub fn chunk_size_for_file(&self, file_size: u64, path: Option<&Path>) -> usize {
+        self.chunking_controller.chunk_size_for_file(file_size, path)
     }
 
     /// Create full backup using direct upload strategy
@@ -756,6 +821,14 @@ impl DirectUploadBackup {
         let mut hasher = Sha256::new();
         hasher.update(&data);
         Ok(format!("{:x}", hasher.finalize()))
+    }
+    
+    /// Calculate SHA-256 hash of file using parallel hashing for large files
+    async fn calculate_hash_parallel(path: &Path) -> Result<String> {
+        use crate::parallel_hash::hash_file_async;
+        
+        hash_file_async(path, None).await
+            .map_err(|e| SkylockError::Backup(format!("Hash calculation failed: {}", e)))
     }
     
     /// Ensure remote directory exists by creating all parent directories

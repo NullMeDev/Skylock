@@ -15,6 +15,12 @@ pub mod change_tracker;
 pub mod verification;
 pub mod migration;
 pub mod manifest_signing;
+
+// Performance optimization modules
+pub mod parallelism;
+pub mod chunking;
+pub mod connection_pool;
+pub mod parallel_hash;
 pub use error::{Result, SkylockError};
 pub use direct_upload::{DirectUploadBackup, BackupManifest, FileEntry};
 pub use retention::{RetentionPolicy, RetentionManager, GfsPolicy};
@@ -26,6 +32,12 @@ pub use verification::{BackupVerifier, VerificationResult, FileVerification};
 pub use encryption::{EncryptionManager, KdfParams};
 pub use compression_config::{CompressionConfig, CompressionLevel, CompressionStats};
 pub use browser::EncryptedBrowser;
+
+// Performance optimization exports
+pub use parallelism::{ParallelismController, ParallelismConfig, ThroughputMetrics};
+pub use chunking::{ChunkingController, ChunkingConfig, ChunkStrategy, FileChunk, ChunkIterator};
+pub use connection_pool::{ConnectionPool, ConnectionPoolConfig, ConnectionFactory, PoolStats};
+pub use parallel_hash::{ParallelHasher, ParallelHashConfig, hash_file_async, hash_files_async};
 use chrono::{DateTime, Utc};
 use skylock_core::Config;
 use skylock_hetzner::HetznerClient;
