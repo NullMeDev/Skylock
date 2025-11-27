@@ -9,6 +9,9 @@ pub enum SkylockError {
     
     #[error("Cryptography error: {0}")]
     Crypto(String),
+    
+    #[error("Compression error: {0}")]
+    Compression(String),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

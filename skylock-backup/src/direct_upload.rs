@@ -847,8 +847,48 @@ impl DirectUploadBackup {
         Ok(())
     }
 
-    /// Upload backup manifest
+    /// Upload backup manifest with optional encryption
+    /// 
+    /// In v3+ format, manifests are encrypted for metadata privacy.
+    /// File names, paths, and sizes are only visible with the correct encryption key.
     async fn upload_manifest(&self, manifest: &BackupManifest) -> Result<()> {
+        use crate::encrypted_manifest::{ManifestEncryption, ManifestHeader};
+        
+        // Ensure backup directory exists
+        let backup_dir = format!("/skylock/backups/{}", manifest.backup_id);
+        Self::ensure_remote_directory_exists(&self.hetzner, &backup_dir).await?;
+        
+        // Create manifest encryption handler
+        let manifest_encryption = ManifestEncryption::new(&self.encryption);
+        
+        // Encrypt the full manifest
+        let encrypted = manifest_encryption.encrypt_manifest(manifest)?;
+        
+        // Upload encrypted manifest (manifest.json.enc)
+        let encrypted_path = format!("/skylock/backups/{}/manifest.json.enc", manifest.backup_id);
+        let temp_encrypted = tempfile::NamedTempFile::new()
+            .map_err(|e| SkylockError::Backup(format!("Temp file failed: {}", e)))?;
+        tokio::fs::write(temp_encrypted.path(), &encrypted.encrypted_data).await?;
+        self.hetzner.upload_file(temp_encrypted.path(), &PathBuf::from(&encrypted_path)).await?;
+        
+        // Upload public header (manifest_header.json) - for listing backups without decryption
+        let header_path = format!("/skylock/backups/{}/manifest_header.json", manifest.backup_id);
+        let header_json = serde_json::to_string_pretty(&encrypted.header)
+            .map_err(|e| SkylockError::Backup(format!("Serialize header failed: {}", e)))?;
+        let temp_header = tempfile::NamedTempFile::new()
+            .map_err(|e| SkylockError::Backup(format!("Temp file failed: {}", e)))?;
+        tokio::fs::write(temp_header.path(), header_json).await?;
+        self.hetzner.upload_file(temp_header.path(), &PathBuf::from(&header_path)).await?;
+        
+        println!("  📋 Encrypted manifest uploaded (v3 format)");
+        println!("  🔐 File metadata is protected - requires key to browse");
+        
+        Ok(())
+    }
+    
+    /// Upload manifest in legacy plaintext format (for backward compatibility)
+    #[allow(dead_code)]
+    async fn upload_manifest_legacy(&self, manifest: &BackupManifest) -> Result<()> {
         let manifest_json = serde_json::to_string_pretty(manifest)
             .map_err(|e| SkylockError::Backup(format!("Serialize failed: {}", e)))?;
         
@@ -864,24 +904,48 @@ impl DirectUploadBackup {
         tokio::fs::write(temp_file.path(), manifest_json).await?;
         self.hetzner.upload_file(temp_file.path(), &PathBuf::from(&manifest_path)).await?;
         
-        println!("  📋 Manifest uploaded");
+        println!("  📋 Manifest uploaded (legacy plaintext format)");
         
         Ok(())
     }
 
     /// List all backups
+    /// 
+    /// For v3+ backups with encrypted manifests, this will download and decrypt
+    /// the manifests to show full details. For older backups, reads plaintext manifests.
     pub async fn list_backups(&self) -> Result<Vec<BackupManifest>> {
         let files = self.hetzner.list_files("/skylock/backups").await?;
         let mut manifests = Vec::new();
         
-        for file in files {
-            if file.path.file_name()
+        for file in &files {
+            let file_name = file.path.file_name()
                 .and_then(|n| n.to_str())
-                .map(|n| n == "manifest.json")
-                .unwrap_or(false)
-            {
-                if let Ok(manifest) = self.download_manifest(&file.path).await {
+                .unwrap_or("");
+            
+            // Try encrypted manifest first (v3+)
+            if file_name == "manifest.json.enc" {
+                let backup_id = file.path.parent()
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                
+                if let Ok(manifest) = self.download_encrypted_manifest(backup_id).await {
                     manifests.push(manifest);
+                }
+            }
+            // Fallback to legacy plaintext manifest
+            else if file_name == "manifest.json" {
+                // Skip if we already have encrypted version (parent dir check)
+                let parent_dir = file.path.parent().unwrap_or(Path::new(""));
+                let encrypted_exists = files.iter().any(|f| {
+                    f.path.parent() == Some(parent_dir) && 
+                    f.path.file_name().and_then(|n| n.to_str()) == Some("manifest.json.enc")
+                });
+                
+                if !encrypted_exists {
+                    if let Ok(manifest) = self.download_manifest_legacy(&file.path).await {
+                        manifests.push(manifest);
+                    }
                 }
             }
         }
@@ -892,8 +956,30 @@ impl DirectUploadBackup {
         Ok(manifests)
     }
 
-    /// Download and parse manifest
-    async fn download_manifest(&self, path: &Path) -> Result<BackupManifest> {
+    /// Download and decrypt encrypted manifest (v3+ format)
+    async fn download_encrypted_manifest(&self, backup_id: &str) -> Result<BackupManifest> {
+        use crate::encrypted_manifest::ManifestEncryption;
+        
+        let encrypted_path = PathBuf::from(format!(
+            "/skylock/backups/{}/manifest.json.enc", backup_id
+        ));
+        
+        let temp_file = tempfile::NamedTempFile::new()
+            .map_err(|e| SkylockError::Backup(format!("Temp file failed: {}", e)))?;
+        
+        self.hetzner.download_file(&encrypted_path, &temp_file.path().to_path_buf()).await?;
+        
+        let encrypted_data = tokio::fs::read(temp_file.path()).await?;
+        
+        // Decrypt the manifest
+        let manifest_encryption = ManifestEncryption::new(&self.encryption);
+        let manifest = manifest_encryption.decrypt_manifest(&encrypted_data, backup_id)?;
+        
+        Ok(manifest)
+    }
+    
+    /// Download legacy plaintext manifest
+    async fn download_manifest_legacy(&self, path: &Path) -> Result<BackupManifest> {
         let temp_file = tempfile::NamedTempFile::new()
             .map_err(|e| SkylockError::Backup(format!("Temp file failed: {}", e)))?;
         
@@ -906,10 +992,38 @@ impl DirectUploadBackup {
         Ok(manifest)
     }
     
+    /// Download and parse manifest - auto-detects format
+    async fn download_manifest(&self, backup_id: &str) -> Result<BackupManifest> {
+        // Try encrypted manifest first (v3+)
+        let encrypted_path = PathBuf::from(format!(
+            "/skylock/backups/{}/manifest.json.enc", backup_id
+        ));
+        
+        if self.file_exists(&encrypted_path).await {
+            return self.download_encrypted_manifest(backup_id).await;
+        }
+        
+        // Fallback to legacy plaintext
+        let legacy_path = PathBuf::from(format!(
+            "/skylock/backups/{}/manifest.json", backup_id
+        ));
+        self.download_manifest_legacy(&legacy_path).await
+    }
+    
+    /// Check if a remote file exists
+    async fn file_exists(&self, path: &Path) -> bool {
+        let temp_file = match tempfile::NamedTempFile::new() {
+            Ok(f) => f,
+            Err(_) => return false,
+        };
+        
+        self.hetzner.download_file(path, &temp_file.path().to_path_buf()).await.is_ok()
+    }
+    
     /// Load a backup manifest by ID (public API for comparison)
+    /// Automatically handles both encrypted (v3+) and legacy formats
     pub async fn load_manifest(&self, backup_id: &str) -> Result<BackupManifest> {
-        let manifest_path = PathBuf::from(format!("/skylock/backups/{}/manifest.json", backup_id));
-        self.download_manifest(&manifest_path).await
+        self.download_manifest(backup_id).await
     }
 
     /// Restore entire backup with progress tracking
@@ -920,9 +1034,8 @@ impl DirectUploadBackup {
         println!("🔄 Restoring backup: {}", backup_id);
         println!();
         
-        // Download manifest
-        let manifest_path = PathBuf::from(format!("/skylock/backups/{}/manifest.json", backup_id));
-        let manifest = self.download_manifest(&manifest_path).await?;
+        // Download manifest (auto-detects encrypted vs legacy format)
+        let manifest = self.download_manifest(backup_id).await?;
         
         println!("   📦 Files to restore: {}", manifest.files.len());
         println!("   📊 Total size: {} bytes", manifest.total_size);
@@ -1093,9 +1206,8 @@ impl DirectUploadBackup {
 
     /// Preview backup contents before restoring
     pub async fn preview_backup(&self, backup_id: &str) -> Result<()> {
-        // Download manifest
-        let manifest_path = PathBuf::from(format!("/skylock/backups/{}/manifest.json", backup_id));
-        let manifest = self.download_manifest(&manifest_path).await?;
+        // Download manifest (auto-detects encrypted vs legacy)
+        let manifest = self.download_manifest(backup_id).await?;
         
         println!();
         println!("{}", "==========================================================================");
@@ -1161,8 +1273,8 @@ impl DirectUploadBackup {
     
     /// Check for conflicts before restore
     pub async fn check_restore_conflicts(&self, backup_id: &str, target_dir: &Path) -> Result<Vec<PathBuf>> {
-        let manifest_path = PathBuf::from(format!("/skylock/backups/{}/manifest.json", backup_id));
-        let manifest = self.download_manifest(&manifest_path).await?;
+        // Download manifest (auto-detects encrypted vs legacy)
+        let manifest = self.download_manifest(backup_id).await?;
         
         let mut conflicts = Vec::new();
         
@@ -1186,9 +1298,8 @@ impl DirectUploadBackup {
         file_path: &str,
         output: &Path,
     ) -> Result<()> {
-        // Download manifest
-        let manifest_path = PathBuf::from(format!("/skylock/backups/{}/manifest.json", backup_id));
-        let manifest = self.download_manifest(&manifest_path).await?;
+        // Download manifest (auto-detects encrypted vs legacy)
+        let manifest = self.download_manifest(backup_id).await?;
         
         // Find file in manifest
         let entry = manifest.files.iter()
@@ -1223,9 +1334,8 @@ impl DirectUploadBackup {
     pub async fn delete_backup(&self, backup_id: &str) -> Result<()> {
         let backup_dir = format!("/skylock/backups/{}", backup_id);
         
-        // Download manifest to know what files to delete
-        let manifest_path = PathBuf::from(format!("/skylock/backups/{}/manifest.json", backup_id));
-        let manifest = match self.download_manifest(&manifest_path).await {
+        // Download manifest to know what files to delete (auto-detects format)
+        let manifest = match self.download_manifest(backup_id).await {
             Ok(m) => m,
             Err(_) => {
                 // If manifest doesn't exist, still try to delete the directory
@@ -1243,8 +1353,14 @@ impl DirectUploadBackup {
             let _ = self.hetzner.delete_file(&file_path).await;
         }
         
-        // Delete manifest
-        let _ = self.hetzner.delete_file(&manifest_path).await;
+        // Delete manifest files (both encrypted and legacy formats)
+        let encrypted_manifest = PathBuf::from(format!("/skylock/backups/{}/manifest.json.enc", backup_id));
+        let header_file = PathBuf::from(format!("/skylock/backups/{}/manifest_header.json", backup_id));
+        let legacy_manifest = PathBuf::from(format!("/skylock/backups/{}/manifest.json", backup_id));
+        
+        let _ = self.hetzner.delete_file(&encrypted_manifest).await;
+        let _ = self.hetzner.delete_file(&header_file).await;
+        let _ = self.hetzner.delete_file(&legacy_manifest).await;
         
         // Note: WebDAV doesn't have a direct directory delete, files are deleted individually
         // The directory will be empty after all files are deleted

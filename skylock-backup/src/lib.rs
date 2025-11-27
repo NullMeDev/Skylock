@@ -21,6 +21,10 @@ pub mod parallelism;
 pub mod chunking;
 pub mod connection_pool;
 pub mod parallel_hash;
+
+// Security and integrity modules
+pub mod encrypted_manifest;
+pub mod compression_integrity;
 pub use error::{Result, SkylockError};
 pub use direct_upload::{DirectUploadBackup, BackupManifest, FileEntry};
 pub use retention::{RetentionPolicy, RetentionManager, GfsPolicy};
@@ -38,6 +42,16 @@ pub use parallelism::{ParallelismController, ParallelismConfig, ThroughputMetric
 pub use chunking::{ChunkingController, ChunkingConfig, ChunkStrategy, FileChunk, ChunkIterator};
 pub use connection_pool::{ConnectionPool, ConnectionPoolConfig, ConnectionFactory, PoolStats};
 pub use parallel_hash::{ParallelHasher, ParallelHashConfig, hash_file_async, hash_files_async};
+
+// Security and integrity exports
+pub use encrypted_manifest::{
+    ManifestHeader, EncryptedManifest, ManifestEncryption,
+    FileTreeNode, BrowseableBackup, BackupSummary, build_file_tree
+};
+pub use compression_integrity::{
+    CompressionVerifier, VerifiedCompression, VerifiedDecompression,
+    CompressionMetadata, calculate_hash, verify_compressed_hash
+};
 use chrono::{DateTime, Utc};
 use skylock_core::Config;
 use skylock_hetzner::HetznerClient;
