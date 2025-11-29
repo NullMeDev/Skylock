@@ -11,7 +11,7 @@ hetzner-storage = []
 aws-storage = ["aws-config", "aws-sdk-s3"]
 azure-storage = ["azure_storage_blobs"]
 gcp-storage = ["google-cloud-storage"]
-backblaze-storage = ["backblaze-b2"]
+backblaze-storage = ["sha1", "hex", "urlencoding", "reqwest"]
 hetzner-api = []
 
 # Platform-specific features
@@ -27,7 +27,11 @@ azure_core = { version = "0.19", optional = true }
 azure_storage = { version = "0.19", optional = true }
 azure_storage_blobs = { version = "0.19", optional = true, features = ["azurite_workaround"] }
 google-cloud-storage = { version = "0.11", optional = true }
-backblaze-b2 = { version = "0.1", optional = true }
+# Backblaze B2 uses native API via reqwest
+sha1 = { version = "0.10", optional = true }
+hex = { version = "0.4", optional = true }
+urlencoding = { version = "2.1", optional = true }
+reqwest = { version = "0.12", features = ["json", "stream"], optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_bytes = "0.11"

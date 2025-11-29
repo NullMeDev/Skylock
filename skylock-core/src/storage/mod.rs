@@ -10,10 +10,13 @@ use crate::{
 };
 
 pub mod providers;
+pub mod unified;
+
 pub use providers::{
     LocalStorageProvider,
     HetznerStorageProvider,
 };
+pub use unified::{UnifiedStorage, UnifiedStorageBuilder, helpers};
 
 #[cfg(feature = "aws-storage")]
 pub use providers::AWSStorageProvider;
@@ -23,9 +26,12 @@ pub use providers::AzureStorageProvider;
 pub use providers::GCPStorageProvider;
 #[cfg(feature = "backblaze-storage")]
 pub use providers::BackblazeStorageProvider;
+#[cfg(feature = "aws-storage")]
+pub use providers::{S3CompatibleConfig, S3CompatibleProvider, ProviderInfo, list_providers};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum StorageProviderType {
+    #[default]
     Local,
     Hetzner,
     #[cfg(feature = "aws-storage")]
@@ -36,6 +42,9 @@ pub enum StorageProviderType {
     GCP,
     #[cfg(feature = "backblaze-storage")]
     Backblaze,
+    /// Generic S3-compatible storage (MinIO, Wasabi, DigitalOcean Spaces, etc.)
+    #[cfg(feature = "aws-storage")]
+    S3Compatible,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +59,55 @@ pub struct StorageConfig {
     pub chunk_size: usize,
     pub retry_count: usize,
     pub retry_delay_ms: u64,
+    
+    // Cloud provider fields (AWS S3, Backblaze B2, etc.)
+    /// S3 bucket name or B2 bucket name
+    pub bucket_name: Option<String>,
+    /// AWS region or B2 region (e.g., "us-east-1", "us-west-002")
+    pub region: Option<String>,
+    /// Custom endpoint URL for S3-compatible services
+    pub endpoint: Option<String>,
+    /// Access key ID (AWS) or Application Key ID (B2)
+    pub access_key_id: Option<String>,
+    /// Secret access key (AWS) or Application Key (B2)
+    pub secret_access_key: Option<String>,
+    /// B2 account ID (Backblaze specific)
+    pub account_id: Option<String>,
+    /// Server-side encryption type (e.g., "AES256", "aws:kms")
+    pub server_side_encryption: Option<String>,
+    /// KMS key ID for SSE-KMS encryption
+    pub kms_key_id: Option<String>,
+    /// Multipart upload threshold in bytes (default: 100MB)
+    pub multipart_threshold: Option<u64>,
+    /// Multipart part size in bytes (default: 10MB, min: 5MB)
+    pub multipart_part_size: Option<u64>,
+}
+
+impl Default for StorageConfig {
+    fn default() -> Self {
+        Self {
+            provider: StorageProviderType::default(),
+            api_token: None,
+            connection_string: None,
+            box_id: None,
+            subaccount_id: None,
+            max_concurrent_uploads: 4,
+            max_concurrent_downloads: 4,
+            chunk_size: 10 * 1024 * 1024, // 10MB
+            retry_count: 3,
+            retry_delay_ms: 1000,
+            bucket_name: None,
+            region: None,
+            endpoint: None,
+            access_key_id: None,
+            secret_access_key: None,
+            account_id: None,
+            server_side_encryption: None,
+            kms_key_id: None,
+            multipart_threshold: Some(100 * 1024 * 1024), // 100MB
+            multipart_part_size: Some(10 * 1024 * 1024),  // 10MB
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,14 +119,14 @@ pub struct StorageItem {
     pub etag: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct UploadOptions {
     pub chunk_size: Option<usize>,
     pub metadata: Option<std::collections::HashMap<String, String>>,
     pub content_type: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct DownloadOptions {
     pub chunk_size: Option<usize>,
     pub range: Option<(u64, u64)>,
@@ -183,6 +241,11 @@ impl StorageManager {
             StorageProviderType::GCP => Box::new(GCPStorageProvider::new(&config).await?),
             #[cfg(feature = "backblaze-storage")]
             StorageProviderType::Backblaze => Box::new(BackblazeStorageProvider::new(&config).await?),
+            #[cfg(feature = "aws-storage")]
+            StorageProviderType::S3Compatible => {
+                // S3-compatible providers use AWS SDK with custom endpoints
+                Box::new(AWSStorageProvider::new(&config).await?)
+            }
             _ => return Err(Error::new(
                 ErrorCategory::Storage(StorageErrorType::PathNotFound),
                 ErrorSeverity::High,

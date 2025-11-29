@@ -51,6 +51,10 @@ directories = "5.0"
 # Performance optimization dependencies
 rayon = "1.8"
 
+# Unix system calls
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # Windows-only backup dependencies
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.48", features = ["Win32_Storage_Vss", "Win32_System_Com", "Win32_Foundation", "Win32_System_WindowsProgramming", "Win32_Storage_FileSystem"] }

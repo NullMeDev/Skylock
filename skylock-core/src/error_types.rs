@@ -117,6 +117,8 @@ pub enum StorageErrorType {
     IOError(String),
     AuthenticationFailed,
     ConnectionFailed(String),
+    /// Configuration error for storage provider
+    ConfigError,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -212,6 +214,7 @@ impl std::fmt::Display for StorageErrorType {
             StorageErrorType::IOError(msg) => write!(f, "IO error: {}", msg),
             StorageErrorType::AuthenticationFailed => write!(f, "Authentication failed"),
             StorageErrorType::ConnectionFailed(msg) => write!(f, "Connection failed: {}", msg),
+            StorageErrorType::ConfigError => write!(f, "Storage configuration error"),
         }
     }
 }

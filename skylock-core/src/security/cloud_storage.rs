@@ -5,7 +5,9 @@ use crate::{
 };
 
 #[cfg(feature = "aws-storage")]
-use aws_sdk_s3::{Client as S3Client, Region};
+use aws_sdk_s3::Client as S3Client;
+#[cfg(feature = "aws-storage")]
+use aws_sdk_s3::config::Region;
 #[cfg(feature = "aws-storage")]
 use aws_config;
 

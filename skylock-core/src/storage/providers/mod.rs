@@ -6,6 +6,8 @@ mod azure;
 mod gcp;
 #[cfg(feature = "backblaze-storage")]
 mod backblaze;
+#[cfg(feature = "aws-storage")]
+mod s3_compatible;
 
 mod local;
 mod hetzner;
@@ -21,3 +23,5 @@ pub use azure::AzureStorageProvider;
 pub use gcp::GCPStorageProvider;
 #[cfg(feature = "backblaze-storage")]
 pub use backblaze::BackblazeStorageProvider;
+#[cfg(feature = "aws-storage")]
+pub use s3_compatible::{S3CompatibleConfig, S3CompatibleProvider, ProviderInfo, list_providers};

@@ -30,6 +30,10 @@ pub mod compression_integrity;
 pub mod forward_secrecy;
 pub mod key_rotation;
 pub mod hsm_provider;
+
+// Real-time sync and continuous backup
+pub mod watcher;
+pub mod sync_queue;
 pub use error::{Result, SkylockError};
 pub use direct_upload::{DirectUploadBackup, BackupManifest, FileEntry};
 pub use retention::{RetentionPolicy, RetentionManager, GfsPolicy};
@@ -70,6 +74,18 @@ pub use hsm_provider::{
     HsmProvider, HsmKeyId, HsmProviderType, HsmKeyAlgorithm, HsmKeyUsage,
     HsmKeyInfo, HsmSession, HsmConfig, HsmKeyManager, MockHsmProvider
 };
+
+// Real-time sync and continuous backup exports
+pub use watcher::{
+    FileWatcher, WatcherConfig, WatcherError, WatcherStats,
+    FileEvent, FileEventKind, EventBatch, DEFAULT_DEBOUNCE_MS
+};
+pub use sync_queue::{
+    SyncQueueProcessor, SyncQueueConfig, SyncQueueError, SyncQueueStats,
+    SyncItem, SyncAction, SyncResult, ConflictResolution, ConflictResolutionType,
+    DEFAULT_MAX_QUEUE_SIZE, DEFAULT_CONCURRENT_UPLOADS
+};
+
 use chrono::{DateTime, Utc};
 use skylock_core::Config;
 use skylock_hetzner::HetznerClient;
