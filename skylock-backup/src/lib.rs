@@ -34,6 +34,8 @@ pub mod hsm_provider;
 // Real-time sync and continuous backup
 pub mod watcher;
 pub mod sync_queue;
+pub mod sync_state;
+pub mod continuous;
 pub use error::{Result, SkylockError};
 pub use direct_upload::{DirectUploadBackup, BackupManifest, FileEntry};
 pub use retention::{RetentionPolicy, RetentionManager, GfsPolicy};
@@ -84,6 +86,13 @@ pub use sync_queue::{
     SyncQueueProcessor, SyncQueueConfig, SyncQueueError, SyncQueueStats,
     SyncItem, SyncAction, SyncResult, ConflictResolution, ConflictResolutionType,
     DEFAULT_MAX_QUEUE_SIZE, DEFAULT_CONCURRENT_UPLOADS
+};
+pub use sync_state::{
+    SyncStateManager, SyncStateConfig, SyncStateError, SyncStats,
+    FileState, SyncStatus, SyncHistoryEntry, SyncAction as StateSyncAction
+};
+pub use continuous::{
+    ContinuousBackup, ContinuousBackupConfig, ContinuousBackupStats, ContinuousBackupError
 };
 
 use chrono::{DateTime, Utc};

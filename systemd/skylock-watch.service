@@ -1,0 +1,35 @@
+[Unit]
+Description=Skylock Continuous Backup Watcher
+Documentation=https://github.com/NullMeDev/Skylock
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/skylock watch
+Restart=on-failure
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Resource limits
+MemoryMax=1G
+CPUQuota=50%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skylock-watch
+
+# Environment
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=default.target

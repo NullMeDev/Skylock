@@ -5,6 +5,94 @@ All notable changes to Skylock will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2025-12-02 ☁️ **MULTI-PROVIDER STORAGE & REAL-TIME SYNC**
+
+### Added - Cloud Storage Providers
+- **AWS S3 Provider** (`skylock-core/src/storage/providers/aws.rs`)
+  - Full S3 API support with multipart uploads for files >100MB
+  - Server-side encryption (SSE-S3, SSE-KMS) support
+  - Configurable multipart thresholds and part sizes
+  - Automatic retry with exponential backoff
+- **Backblaze B2 Provider** (`skylock-core/src/storage/providers/backblaze.rs`)
+  - Native B2 API integration (not S3-compatible)
+  - Large file upload with automatic part management
+  - Auth token caching with 24-hour expiry tracking
+  - SHA1 content verification per B2 requirements
+- **S3-Compatible Providers** (`skylock-core/src/storage/providers/s3_compatible.rs`)
+  - Pre-configured support for: MinIO, Wasabi, DigitalOcean Spaces, Linode Object Storage, Cloudflare R2, Scaleway, Vultr
+  - Easy custom endpoint configuration
+  - Helper functions for common providers
+- **Unified Storage Abstraction** (`skylock-core/src/storage/unified.rs`)
+  - Seamlessly switch between providers without code changes
+  - Automatic retry with configurable attempts
+  - Fallback provider support for high availability
+  - Builder pattern for configuration
+
+### Added - Real-Time Sync Infrastructure
+- **File Watcher Daemon** (`skylock-backup/src/watcher.rs`)
+  - Real-time file system monitoring using OS-native APIs
+  - 500ms debounce to batch rapid changes
+  - Configurable ignore patterns (glob support)
+  - Root access detection with warnings
+  - Event deduplication and merging
+- **Sync Queue Processor** (`skylock-backup/src/sync_queue.rs`)
+  - Priority-based sync queue with configurable size limits
+  - "Newest version wins" conflict resolution
+  - Exponential backoff retry for failed uploads
+  - Concurrent upload support (default: 4 threads)
+  - Conflict logging and statistics
+- **Sync State Manager** (`skylock-backup/src/sync_state.rs`)
+  - Persistent state tracking using JSON storage
+  - File modification time tracking
+  - Sync history with configurable retention
+  - Statistics: success rates, conflict counts, bytes transferred
+  - Automatic state pruning
+- **Continuous Backup Daemon** (`skylock-backup/src/continuous.rs`)
+  - Integrates watcher, queue, and state components
+  - Initial directory scan on startup
+  - Periodic state persistence
+  - Graceful shutdown handling
+
+### Added - Infrastructure
+- **GitHub Actions Release Workflow** (`.github/workflows/release.yml`)
+  - Automated builds for Linux (x86_64, aarch64), Windows, macOS (x86_64, aarch64)
+  - SHA256 checksums for all artifacts
+  - Automatic GitHub release creation on tag push
+- **Systemd Service for Watch Mode** (`systemd/skylock-watch.service`)
+  - User-level systemd service for continuous backup
+  - Security hardening (ProtectSystem, NoNewPrivileges, etc.)
+  - Resource limits (1GB memory, 50% CPU)
+
+### Changed
+- **StorageConfig** extended with cloud provider fields:
+  - `bucket_name`, `region`, `endpoint`
+  - `access_key_id`, `secret_access_key`, `account_id`
+  - `server_side_encryption`, `kms_key_id`
+  - `multipart_threshold`, `multipart_part_size`
+- **UploadOptions** and **DownloadOptions** now derive `Clone` and `Default`
+- Added `ConfigError` to `StorageErrorType` enum
+
+### Dependencies
+- skylock-core:
+  - `aws-sdk-s3 = "0.34"` (optional, aws-storage feature)
+  - `aws-config = "1.5"` (optional, aws-storage feature)
+  - `sha1 = "0.10"` (for Backblaze B2)
+  - `urlencoding = "2.1"` (for B2 URL encoding)
+- skylock-backup:
+  - `libc = "0.2"` (Unix only, for root access check)
+
+### Testing
+- All skylock-core tests pass with new providers
+- All skylock-backup tests pass with new sync modules
+- Compilation verified on Linux with all features enabled
+
+### Documentation
+- Updated README.md with v0.7.0 features
+- Added new storage providers to feature list
+- Updated WARP.md with development guidance
+
+---
+
 ## [0.6.1] - 2025-01-24 🚨 **CRITICAL SECURITY PATCH**
 
 ### Security Fixes (CRITICAL)

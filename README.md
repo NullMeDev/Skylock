@@ -1,6 +1,6 @@
 # Skylock
 
-[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)](https://github.com/NullMeDev/Skylock/releases)
+[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)](https://github.com/NullMeDev/Skylock/releases)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](.github/workflows/ci.yml)
@@ -38,9 +38,13 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - Real-time progress bars with upload speed and ETA
 - Individual file and overall backup progress tracking
 
-**Storage Integration**
+**Storage Integration** (🚀 Enhanced in v0.7.0)
 - Hetzner Storage Box support via WebDAV (HTTPS)
 - Hetzner Storage Box support via SFTP (SSH)
+- **AWS S3 support** with multipart uploads for large files - **new in v0.7.0**
+- **Backblaze B2 support** via native API - **new in v0.7.0**
+- **S3-compatible providers**: MinIO, Wasabi, DigitalOcean Spaces, etc. - **new in v0.7.0**
+- Unified storage abstraction with automatic failover - **new in v0.7.0**
 - Automatic directory creation and path management
 - Connection testing and validation
 - Configurable storage paths and endpoints
@@ -137,11 +141,20 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - ✅ **Security audit**: Comprehensive v0.5.1 baseline audit completed
 - ✅ **100% backward compatible**: All v1/v2 backups restore correctly
 
+**Multi-Provider Storage & Real-Time Sync (v0.7.0)** ☁️
+- ✅ **AWS S3 provider**: Full support with multipart uploads for files >100MB
+- ✅ **Backblaze B2 provider**: Native B2 API integration (not S3-compatible)
+- ✅ **S3-compatible providers**: MinIO, Wasabi, DigitalOcean Spaces, Cloudflare R2
+- ✅ **Unified storage abstraction**: Seamlessly switch between providers with retry/failover
+- ✅ **File watcher daemon**: Real-time file system monitoring with 500ms debounce
+- ✅ **Sync queue processor**: Priority-based queuing with conflict resolution
+- ✅ **Continuous backup mode**: `skylock watch` for real-time backup
+- ✅ **SQLite sync state tracking**: Persistent state across restarts
+
 ### In Progress (Next Releases)
 
 **High Priority - Automation & Reliability**
 - System snapshot capability for full system recovery
-- Real-time file system monitoring (inotify/FSEvents)
 
 **Medium Priority - Enhanced Functionality**
 - Parallel restore for faster recovery
@@ -151,7 +164,6 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 ### Planned
 
 **Storage Backends**
-- AWS S3 support
 - Google Cloud Storage support
 - Azure Blob Storage support
 - Local filesystem as backup destination
