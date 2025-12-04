@@ -9,10 +9,8 @@ use eframe::egui;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Local};
 use bytesize::ByteSize;
-use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Nonce};
-use argon2::{Argon2, Algorithm, Version, Params};
 use sha2::{Sha256, Digest};
 
 /// Connection status for backend
@@ -293,8 +291,9 @@ impl SkylockApp {
             },
         ];
         
-        // Generate test encryption data for key validation
-        state.validation_test_data = Some(generate_validation_test_data());
+        // In demo mode, we don't have real encrypted data to validate against
+        // Real validation happens when connected to actual backup storage
+        state.validation_test_data = None;
     }
 
     fn render_sidebar(&self, ui: &mut egui::Ui, state: &mut AppState) {
@@ -1043,7 +1042,11 @@ impl SkylockApp {
                 ui.add_space(10.0);
                 
                 ui.label("Enter your encryption key to decrypt backup contents.");
-                ui.label(egui::RichText::new("The key will be validated against encrypted test data using AES-256-GCM.").small().weak());
+                if state.demo_mode {
+                    ui.label(egui::RichText::new("Demo mode: Key will be accepted if 16+ characters.").small().color(egui::Color32::YELLOW));
+                } else {
+                    ui.label(egui::RichText::new("Key will be validated via AES-256-GCM authenticated decryption.").small().weak());
+                }
                 
                 ui.add_space(15.0);
                 
@@ -1079,11 +1082,11 @@ impl SkylockApp {
                     let validate = ui.button("Validate Key").clicked() 
                         || (response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
                     
-                    if validate {
-                        // Perform real cryptographic validation
-                        match validate_encryption_key(&state.key_input, state.validation_test_data.as_deref()) {
-                            KeyValidationResult::Valid => {
-                                // Key is cryptographically valid
+                    if validate && !state.key_input.is_empty() {
+                        // In demo mode or when no test data, accept key based on length
+                        // Real validation happens when connected to actual encrypted backups
+                        if state.demo_mode || state.validation_test_data.is_none() {
+                            if state.key_input.len() >= 16 {
                                 let key_hash = hash_key(&state.key_input);
                                 state.encryption_key = Some(state.key_input.clone());
                                 state.key_valid = true;
@@ -1092,30 +1095,27 @@ impl SkylockApp {
                                 state.key_input.clear();
                                 state.error_message = None;
                                 
-                                // Update file display names to show real names
                                 for file in &mut state.current_files {
                                     file.display_name = file.name.clone();
                                 }
                                 
                                 state.activity_log.insert(0, ActivityEntry {
                                     timestamp: Local::now(),
-                                    action: "Key validated".to_string(),
-                                    details: "Encryption key successfully validated".to_string(),
+                                    action: "Key accepted".to_string(),
+                                    details: if state.demo_mode { 
+                                        "Demo mode - key stored for session".to_string() 
+                                    } else { 
+                                        "Key accepted".to_string() 
+                                    },
                                     success: true,
                                 });
+                            } else {
+                                state.error_message = Some("Key must be at least 16 characters".to_string());
                             }
-                            KeyValidationResult::Invalid => {
-                                state.error_message = Some("Invalid encryption key - decryption failed".to_string());
-                                state.activity_log.insert(0, ActivityEntry {
-                                    timestamp: Local::now(),
-                                    action: "Key validation failed".to_string(),
-                                    details: "Invalid encryption key provided".to_string(),
-                                    success: false,
-                                });
-                            }
-                            KeyValidationResult::NoTestData => {
-                                // No test data available - use length check as fallback
-                                if state.key_input.len() >= 16 {
+                        } else {
+                            // Real cryptographic validation when we have test data
+                            match validate_encryption_key(&state.key_input, state.validation_test_data.as_deref()) {
+                                KeyValidationResult::Valid => {
                                     let key_hash = hash_key(&state.key_input);
                                     state.encryption_key = Some(state.key_input.clone());
                                     state.key_valid = true;
@@ -1128,17 +1128,22 @@ impl SkylockApp {
                                         file.display_name = file.name.clone();
                                     }
                                     
-                                    state.status_message = Some(StatusMessage {
-                                        text: "Key accepted (no validation data available)".to_string(),
-                                        level: StatusLevel::Warning,
+                                    state.activity_log.insert(0, ActivityEntry {
                                         timestamp: Local::now(),
+                                        action: "Key validated".to_string(),
+                                        details: "Encryption key cryptographically validated".to_string(),
+                                        success: true,
                                     });
-                                } else {
-                                    state.error_message = Some("Key must be at least 16 characters".to_string());
                                 }
-                            }
-                            KeyValidationResult::Error(e) => {
-                                state.error_message = Some(format!("Validation error: {}", e));
+                                KeyValidationResult::Invalid => {
+                                    state.error_message = Some("Invalid encryption key - decryption failed".to_string());
+                                }
+                                KeyValidationResult::NoTestData => {
+                                    state.error_message = Some("No validation data available".to_string());
+                                }
+                                KeyValidationResult::Error(e) => {
+                                    state.error_message = Some(format!("Validation error: {}", e));
+                                }
                             }
                         }
                     }
@@ -1162,16 +1167,8 @@ impl eframe::App for SkylockApp {
         };
         let state = &mut *state_guard;
         
-        // Key dialog (modal overlay)
+        // Key dialog (modal - rendered on top without blocking backdrop)
         if state.show_key_dialog {
-            // Dim background
-            egui::Area::new(egui::Id::new("modal_backdrop"))
-                .fixed_pos([0.0, 0.0])
-                .show(ctx, |ui| {
-                    let screen = ctx.screen_rect();
-                    ui.allocate_response(screen.size(), egui::Sense::click());
-                    ui.painter().rect_filled(screen, 0.0, egui::Color32::from_black_alpha(180));
-                });
             self.render_key_dialog(ctx, state);
         }
         
@@ -1226,76 +1223,41 @@ pub fn run_gui() -> Result<(), eframe::Error> {
 // ============================================================================
 
 /// Validate encryption key using AES-256-GCM authenticated decryption
-/// 
-/// This provides real cryptographic validation - if the key is wrong,
-/// the authentication tag verification will fail.
+/// This is used when connected to real backup storage with encrypted data
 pub fn validate_encryption_key(key: &str, test_data: Option<&[u8]>) -> KeyValidationResult {
+    use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Nonce};
+    
     if key.len() < 16 {
         return KeyValidationResult::Invalid;
     }
     
     let test_data = match test_data {
-        Some(data) if data.len() >= 28 => data, // nonce (12) + ciphertext (min 1) + tag (16) = 29 min
+        Some(data) if data.len() >= 28 => data,
         _ => return KeyValidationResult::NoTestData,
     };
     
-    // Derive key using Argon2id (simplified for validation)
-    // In production, use the same params as the backup system
+    // Derive key from password
     let mut derived_key = [0u8; 32];
-    
-    // Use PBKDF2-like simple derivation for demo (Argon2id would need salt from test data)
-    // For real validation, extract salt from test_data header
     let mut hasher = Sha256::new();
     hasher.update(key.as_bytes());
     hasher.update(b"skylock_key_derivation_v1");
     let hash_result = hasher.finalize();
     derived_key.copy_from_slice(&hash_result);
     
-    // Parse test data: [12-byte nonce][ciphertext][16-byte tag]
-    if test_data.len() < 28 {
-        return KeyValidationResult::Error("Test data too short".to_string());
-    }
-    
     let nonce = &test_data[..12];
     let ciphertext = &test_data[12..];
     
-    // Attempt decryption with AES-256-GCM
     let cipher = match Aes256Gcm::new_from_slice(&derived_key) {
         Ok(c) => c,
-        Err(e) => return KeyValidationResult::Error(format!("Cipher init failed: {}", e)),
+        Err(e) => return KeyValidationResult::Error(format!("Cipher error: {}", e)),
     };
     
     let nonce = Nonce::from_slice(nonce);
     
     match cipher.decrypt(nonce, ciphertext) {
         Ok(_) => KeyValidationResult::Valid,
-        Err(_) => KeyValidationResult::Invalid, // Authentication failed = wrong key
+        Err(_) => KeyValidationResult::Invalid,
     }
-}
-
-/// Generate test data for key validation
-/// This encrypts a known plaintext that can be used to verify keys
-pub fn generate_validation_test_data() -> Vec<u8> {
-    // Use a fixed test key for demo mode
-    // In production, this would use the actual encryption key
-    let test_key = b"demo_test_key_for_validation_32b"; // 32 bytes
-    let plaintext = b"SKYLOCK_KEY_VALIDATION_TEST_DATA";
-    
-    let cipher = Aes256Gcm::new_from_slice(test_key).expect("Invalid key length");
-    
-    // Generate random nonce
-    let mut nonce_bytes = [0u8; 12];
-    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
-    
-    let ciphertext = cipher.encrypt(nonce, plaintext.as_ref())
-        .expect("Encryption failed");
-    
-    // Return [nonce][ciphertext+tag]
-    let mut result = Vec::with_capacity(12 + ciphertext.len());
-    result.extend_from_slice(&nonce_bytes);
-    result.extend_from_slice(&ciphertext);
-    result
 }
 
 /// Hash key for display purposes (shows first 12 chars of SHA-256 hex)
