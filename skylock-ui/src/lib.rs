@@ -1,5 +1,17 @@
+//! Skylock UI - User interface components for backup management
+//!
+//! This crate provides both CLI dialog utilities and a full GUI application
+//! built with egui for cross-platform desktop support.
+
 use std::path::Path;
 use skylock_core::{Result, SkylockError};
+
+// GUI application module
+#[cfg(feature = "gui")]
+pub mod app;
+
+#[cfg(feature = "gui")]
+pub use app::{run_gui, SkylockApp, AppState, BackupInfo, FileEntry, View, StatusMessage, StatusLevel, garble_text};
 
 #[derive(Debug, Clone, Copy)]
 pub enum DeletionChoice {
@@ -8,14 +20,14 @@ pub enum DeletionChoice {
     Cancel,
 }
 
-// Windows implementation using native-windows-gui
+// Windows implementation using native-windows-gui (for dialogs only)
 #[cfg(windows)]
 mod windows_impl {
     use super::*;
     use native_windows_gui as nwg;
 
     fn init_gui() -> Result<()> {
-        nwg::init().map_err(|_| SkylockError::System(SystemErrorType::ProcessFailed))
+        nwg::init().map_err(|_| SkylockError::Other("Failed to initialize GUI".to_string()))
     }
 
     pub fn show_deletion_prompt(file_path: &Path) -> Result<DeletionChoice> {
@@ -36,7 +48,7 @@ mod windows_impl {
             nwg::MessageChoice::Yes => Ok(DeletionChoice::DeleteEverywhere),
             nwg::MessageChoice::No => Ok(DeletionChoice::DeleteLocalOnly),
             nwg::MessageChoice::Cancel => Ok(DeletionChoice::Cancel),
-            _ => Ok(DeletionChoice::Cancel), // Handle all other cases as Cancel
+            _ => Ok(DeletionChoice::Cancel),
         }
     }
 

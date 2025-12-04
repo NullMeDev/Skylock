@@ -5,7 +5,57 @@ All notable changes to Skylock will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.0] - 2025-12-02 ☁️ **MULTI-PROVIDER STORAGE & REAL-TIME SYNC**
+## [0.8.0] - 2025-12-03 - Desktop GUI & Repository Cleanup
+
+### Added - Desktop GUI Application
+- **Cross-platform GUI** (`skylock-ui/src/app.rs`)
+  - Built with egui/eframe for native performance
+  - Minimalistic dark theme design
+  - Dashboard view with backup status, storage usage, and quick actions
+  - Backup browser with file tree navigation
+  - Encryption key validation with visual feedback
+  - Settings panel for configuration management
+  - Supports Linux (X11/Wayland) and Windows
+
+### Added - GUI Features
+- **Encrypted file browser**
+  - Shows file names, sizes, and metadata
+  - Displays garbled text when encryption key is not validated
+  - Shows real file names after key validation
+  - Visual indicators for encrypted/decrypted state
+- **Dashboard status cards**
+  - Last backup timestamp
+  - Storage usage with progress bar
+  - Total backup count
+- **Quick action buttons**
+  - Backup Now, Verify Backups, Test Connection
+
+### Changed - Repository Cleanup
+- Removed all emojis from README.md and CHANGELOG.md
+- Moved internal documentation to local storage (`~/.local/share/skylock/docs/`)
+- Removed development docs, gameplans, and session summaries from repository
+- Updated .gitignore to exclude internal documentation
+- Simplified documentation structure (README, SECURITY, CONTRIBUTING, CODE_OF_CONDUCT, CHANGELOG only)
+
+### Dependencies
+- skylock-ui:
+  - `eframe = "0.31"` (cross-platform GUI framework)
+  - `egui = "0.31"` (immediate mode GUI library)
+  - `egui_extras = "0.31"` (additional widgets)
+  - `image = "0.25"` (image loading)
+  - `rfd = "0.15"` (native file dialogs)
+  - `dirs = "5.0"` (platform directories)
+  - `bytesize = "1.3"` (human-readable file sizes)
+  - `chrono = "0.4"` (date/time handling)
+
+### Documentation
+- Updated README version badge to v0.8.0
+- Simplified documentation section
+- Removed references to removed internal docs
+
+---
+
+## [0.7.0] - 2025-12-02 - Multi-Provider Storage & Real-Time Sync
 
 ### Added - Cloud Storage Providers
 - **AWS S3 Provider** (`skylock-core/src/storage/providers/aws.rs`)
@@ -93,12 +143,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.6.1] - 2025-01-24 🚨 **CRITICAL SECURITY PATCH**
+## [0.6.1] - 2025-01-24 - Critical Security Patch
 
 ### Security Fixes (CRITICAL)
 This release addresses **4 CRITICAL security vulnerabilities** discovered in comprehensive security audit:
 
-#### CRIT-001: Fixed Nonce Reuse in XChaCha20-Poly1305 Encryption ⚠️ **HIGHEST PRIORITY**
+#### CRIT-001: Fixed Nonce Reuse in XChaCha20-Poly1305 Encryption (HIGHEST PRIORITY)
 - **Issue**: Same nonce reused for all chunks in multi-chunk file encryption
 - **Impact**: Complete encryption compromise - attackers can recover plaintext via XOR operations
 - **Fix**: Implemented HKDF-derived nonces tied to chunk index
@@ -150,10 +200,10 @@ This release addresses **4 CRITICAL security vulnerabilities** discovered in com
 - Already present: `hkdf = "0.12"`, `zeroize = "1.6"`, `sha2 = "0.10"`
 
 ### Backward Compatibility
-- ⚠️ **BREAKING**: Old encrypted files cannot be decrypted with v0.6.1
+- BREAKING: Old encrypted files cannot be decrypted with v0.6.1
   - Nonce derivation algorithm changed fundamentally
   - Files encrypted with v0.6.0 or earlier must be re-encrypted
-- ✅ **Forward compatible**: v0.6.1 encrypted files use new nonce derivation
+- Forward compatible: v0.6.1 encrypted files use new nonce derivation
 - **Migration**: Re-run backups after upgrading to v0.6.1
 
 ### Performance Impact
@@ -167,10 +217,10 @@ This release addresses **4 CRITICAL security vulnerabilities** discovered in com
 - **Recommendation**: **UPGRADE IMMEDIATELY** if using v0.6.0 or earlier
 
 ### Testing
-- ✅ Full workspace compiles successfully
-- ✅ All encryption tests pass with new nonce derivation
-- ✅ File size limits enforced correctly
-- ✅ Zeroization verified with memory analysis
+- Full workspace compiles successfully
+- All encryption tests pass with new nonce derivation
+- File size limits enforced correctly
+- Zeroization verified with memory analysis
 
 ### References
 - Game Plan: `SECURITY_FIX_GAMEPLAN.md`
@@ -179,7 +229,7 @@ This release addresses **4 CRITICAL security vulnerabilities** discovered in com
 
 ---
 
-## [0.6.0] - 2025-01-12 🔒 **SECURITY HARDENING RELEASE**
+## [0.6.0] - 2025-01-12 - Security Hardening Release
 
 ### Security Hardening (Phase 1 Complete)
 - **Stronger KDF defaults for enhanced brute-force resistance**
@@ -249,11 +299,11 @@ This release addresses **4 CRITICAL security vulnerabilities** discovered in com
 - Fixed Argon2::default() usage in skylock-core (now uses explicit params)
 
 ### Backward Compatibility
-- ✅ **100% backward compatible with all previous versions**
-- ✅ **v1 backups (SHA-256)**: Restore correctly with automatic detection
-- ✅ **v2 backups (previous)**: Restore correctly with automatic detection
-- ✅ **New v2 backups**: Use HMAC and HKDF nonces by default
-- ✅ **No migration required**: Old backups remain fully accessible
+- 100% backward compatible with all previous versions
+- v1 backups (SHA-256): Restore correctly with automatic detection
+- v2 backups (previous): Restore correctly with automatic detection
+- New v2 backups: Use HMAC and HKDF nonces by default
+- No migration required: Old backups remain fully accessible
 
 ### Performance
 - KDF time increase from t=3 to t=4 adds ~0.5-1 second to backup/restore operations
@@ -279,14 +329,14 @@ This release addresses **4 CRITICAL security vulnerabilities** discovered in com
 - See `docs/security/SECURITY_ADVISORY_0.6.0.md` for detailed upgrade guide
 
 ### Added (Phase 1.5 - Infrastructure Complete)
-- **Ed25519 Manifest Signing Infrastructure** 🆕
+- **Ed25519 Manifest Signing Infrastructure**
   - Core signing/verification module: `skylock-backup/src/manifest_signing.rs` (459 lines)
   - Anti-rollback protection with monotonic chain versions
   - Key rotation detection and prevention
   - Comprehensive unit tests (4 test cases: signing, tampering, rollback, key rotation)
   - CLI integration planned for v0.7.0
   - Documentation: `docs/security/MANIFEST_SIGNING_IMPLEMENTATION.md`
-- **WebDAV Metadata Encryption Infrastructure** 🆕
+- **WebDAV Metadata Encryption Infrastructure**
   - Path encryption module: `skylock-hetzner/src/metadata_encryption.rs` (419 lines)
   - AES-256-GCM encryption for remote paths (hides filenames from storage provider)
   - HKDF-derived metadata key: `HKDF(encryption_key, "skylock-metadata-v1")`
@@ -296,17 +346,17 @@ This release addresses **4 CRITICAL security vulnerabilities** discovered in com
   - Integration with DirectUploadBackup planned for v0.7.0
 
 ### Planned for Phase 2 (v0.7.0)
-- ✅ Manifest signing infrastructure (DONE - CLI integration pending)
-- ✅ WebDAV metadata encryption infrastructure (DONE - integration pending)
-- 📋 Manifest signing CLI (`skylock key` commands)
-- 📋 Metadata encryption integration (upload/restore flows)
-- 📋 Memory hardening (secrecy::Secret, zeroize)
-- 📋 Password strength validation (zxcvbn integration)
-- 📋 Audit logging (hash-chained operation logs)
-- 📋 Key rotation capability
-- 📋 Shamir's Secret Sharing (key backup/recovery)
+- Manifest signing infrastructure (DONE - CLI integration pending)
+- WebDAV metadata encryption infrastructure (DONE - integration pending)
+- Manifest signing CLI (`skylock key` commands)
+- Metadata encryption integration (upload/restore flows)
+- Memory hardening (secrecy::Secret, zeroize)
+- Password strength validation (zxcvbn integration)
+- Audit logging (hash-chained operation logs)
+- Key rotation capability
+- Shamir's Secret Sharing (key backup/recovery)
 
-## [0.5.1] - 2025-11-08 🔒 **CRITICAL SECURITY PATCH**
+## [0.5.1] - 2025-11-08 - Critical Security Patch
 
 ### Security
 - **CRITICAL: Fixed weak KDF vulnerability (v1 backups)**
@@ -352,10 +402,10 @@ This release addresses **4 CRITICAL security vulnerabilities** discovered in com
   - `KdfParams` and `EncryptionManager` now public in skylock-backup
 
 ### Backward Compatibility
-- ✅ **v1 backups still restore correctly** (no breaking changes)
-- ✅ **Warning displayed when restoring v1 backups**
-- ✅ **Suggests migration**: `skylock migrate <backup_id>` (not yet implemented)
-- ✅ **No data loss**: All existing v1 backups remain accessible
+- v1 backups still restore correctly (no breaking changes)
+- Warning displayed when restoring v1 backups
+- Suggests migration: `skylock migrate <backup_id>` (not yet implemented)
+- No data loss: All existing v1 backups remain accessible
 
 ### Migration Guidance
 - **Immediate action**: All new backups will use v2 format automatically
@@ -667,4 +717,4 @@ Skylock follows [Semantic Versioning](https://semver.org/):
 - **Minor (0.X.0)**: New features, significant improvements (backwards compatible)
 - **Patch (0.0.X)**: Bug fixes, minor improvements (backwards compatible)
 
-Current version: **0.4.0**
+Current version: **0.8.0**

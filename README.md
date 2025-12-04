@@ -1,10 +1,10 @@
 # Skylock
 
-[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)](https://github.com/NullMeDev/Skylock/releases)
+[![Version](https://img.shields.io/badge/version-0.8.0-blue.svg)](https://github.com/NullMeDev/Skylock/releases)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](.github/workflows/ci.yml)
-[![Security](https://img.shields.io/badge/security-hardened-success.svg)](docs/security/SECURITY_ADVISORY_0.6.0.md)
+[![Security](https://img.shields.io/badge/security-hardened-success.svg)](SECURITY.md)
 
 **Contact:** null@nullme.lol
 
@@ -14,7 +14,7 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 
 ### Implemented
 
-**Core Security** (🔒 Enhanced in v0.6.0)
+**Core Security** (Enhanced in v0.6.0)
 - AES-256-GCM client-side encryption with authenticated encryption (AEAD)
 - Argon2id key derivation (64 MiB, t=4, p=4) - **upgraded in v0.6.0**
 - HKDF-derived deterministic nonces (eliminates reuse risk) - **new in v0.6.0**
@@ -38,7 +38,7 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - Real-time progress bars with upload speed and ETA
 - Individual file and overall backup progress tracking
 
-**Storage Integration** (🚀 Enhanced in v0.7.0)
+**Storage Integration** (Enhanced in v0.7.0)
 - Hetzner Storage Box support via WebDAV (HTTPS)
 - Hetzner Storage Box support via SFTP (SSH)
 - **AWS S3 support** with multipart uploads for large files - **new in v0.7.0**
@@ -49,7 +49,7 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - Connection testing and validation
 - Configurable storage paths and endpoints
 
-**Compression** (⚙️ Enhanced in v0.6.0)
+**Compression** (Enhanced in v0.6.0)
 - Zstd compression with configurable levels (0-22) - **new in v0.6.0**
 - Default: Balanced (level 3) for files >10MB
 - Levels: None, Fast(1), Balanced(3), Good(6), Best(9), Custom
@@ -59,8 +59,8 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 
 **CLI Interface**
 - `backup` - Create backups with direct or archive mode (supports --incremental)
-- `browse` - Browse encrypted backup contents with key validation - **new in v0.6.0** 🔍
-- `preview-file` - Preview specific files from backups - **new in v0.6.0** 📄
+- `browse` - Browse encrypted backup contents with key validation - **new in v0.6.0**
+- `preview-file` - Preview specific files from backups - **new in v0.6.0**
 - `list` - List all backups with metadata
 - `restore` - Restore entire backups or individual files
 - `restore-file` - Restore single files from direct upload backups
@@ -85,71 +85,70 @@ A secure, encrypted backup system with client-side AES-256-GCM encryption, built
 - Windows support (via platform-specific modules)
 - macOS support (via platform-specific modules)
 
-### Recently Completed (v0.1.1)
+### Completed Features
 
-- ✅ Structured logging system with rotation and sanitization
-- ✅ Real-time progress bars for file uploads
-- ✅ Enhanced error messages with troubleshooting steps
-- ✅ Security incident handling and prevention
-- ✅ Pre-commit secret scanning
+**v0.1.1 - Logging & UX**
+- Structured logging system with rotation and sanitization
+- Real-time progress bars for file uploads
+- Enhanced error messages with troubleshooting steps
+- Security incident handling and prevention
+- Pre-commit secret scanning
 
-### Recently Completed
+**v0.2.0 - Restore Functionality**
+- Full backup restore with real-time progress tracking
+- Individual file restore from any backup
+- SHA-256 integrity verification for every restored file
+- Backup preview with detailed file listings
+- Conflict detection before restore
+- Automatic decryption and decompression
+- Progress bars for download, decrypt, and verify stages
 
-**Restore Functionality (v0.2.0)**
-- ✅ Full backup restore with real-time progress tracking
-- ✅ Individual file restore from any backup
-- ✅ SHA-256 integrity verification for every restored file
-- ✅ Backup preview with detailed file listings
-- ✅ Conflict detection before restore
-- ✅ Automatic decryption and decompression
-- ✅ Progress bars for download, decrypt, and verify stages
+**v0.3.0 - Automated Scheduling & Notifications**
+- Systemd timer integration for automated backups
+- Flexible scheduling (daily, weekly, hourly, custom)
+- Desktop notifications for backup/restore events (Linux D-Bus)
+- Resource limits to prevent system slowdown
+- Security hardening with systemd sandboxing
+- Persistent timers (catch up missed backups)
+- Easy installation script included
 
-**Automated Scheduling & Notifications (v0.3.0)**
-- ✅ Systemd timer integration for automated backups
-- ✅ Flexible scheduling (daily, weekly, hourly, custom)
-- ✅ Desktop notifications for backup/restore events (Linux D-Bus)
-- ✅ Resource limits to prevent system slowdown
-- ✅ Security hardening with systemd sandboxing
-- ✅ Persistent timers (catch up missed backups)
-- ✅ Easy installation script included
+**v0.4.0 - Backup Retention Policies**
+- Configurable retention rules (keep last N, keep by age)
+- GFS (Grandfather-Father-Son) rotation support
+- Automated cleanup of old backups
+- Safety checks (minimum keep threshold)
+- Dry-run mode to preview deletions
+- Interactive confirmation for deletions
+- Detailed deletion summary and statistics
 
-**Backup Retention Policies (v0.4.0)**
-- ✅ Configurable retention rules (keep last N, keep by age)
-- ✅ GFS (Grandfather-Father-Son) rotation support
-- ✅ Automated cleanup of old backups
-- ✅ Safety checks (minimum keep threshold)
-- ✅ Dry-run mode to preview deletions
-- ✅ Interactive confirmation for deletions
-- ✅ Detailed deletion summary and statistics
+**v0.5.0 - Advanced Backup Features**
+- File change tracking with HMAC-SHA256 verification
+- Incremental backup mode (only changed files)
+- Backup verification command (quick and full modes)
+- Resume interrupted uploads (automatic state tracking)
+- Bandwidth throttling and rate limiting
+- Cron expression support for flexible scheduling
+- Backup diff/comparison tools
 
-**Advanced Backup Features (v0.5.0)**
-- ✅ File change tracking with HMAC-SHA256 verification
-- ✅ Incremental backup mode (only changed files)
-- ✅ Backup verification command (quick and full modes)
-- ✅ Resume interrupted uploads (automatic state tracking)
-- ✅ Bandwidth throttling and rate limiting
-- ✅ Cron expression support for flexible scheduling
-- ✅ Backup diff/comparison tools
+**v0.6.0 - Security Hardening**
+- Stronger KDF defaults: Argon2id (64 MiB, t=4, p=4) - 33% brute-force resistance increase
+- HKDF-derived nonces: Deterministic, eliminates catastrophic nonce reuse risk
+- HMAC-SHA256 integrity: Replaces SHA-256, prevents collision attacks
+- TLS/SSH security: SPKI pinning framework and strict host verification
+- Encrypted file browser: Browse backups with automatic key validation (`skylock browse`)
+- Configurable compression: Levels 0-22 with statistics tracking
+- Security audit: Comprehensive v0.5.1 baseline audit completed
+- 100% backward compatible: All v1/v2 backups restore correctly
 
-**Security Hardening (v0.6.0)** 🔒
-- ✅ **Stronger KDF defaults**: Argon2id (64 MiB, t=4, p=4) - 33% brute-force resistance increase
-- ✅ **HKDF-derived nonces**: Deterministic, eliminates catastrophic nonce reuse risk
-- ✅ **HMAC-SHA256 integrity**: Replaces SHA-256, prevents collision attacks
-- ✅ **TLS/SSH security**: SPKI pinning framework and strict host verification
-- ✅ **Encrypted file browser**: Browse backups with automatic key validation (`skylock browse`)
-- ✅ **Configurable compression**: Levels 0-22 with statistics tracking
-- ✅ **Security audit**: Comprehensive v0.5.1 baseline audit completed
-- ✅ **100% backward compatible**: All v1/v2 backups restore correctly
-
-**Multi-Provider Storage & Real-Time Sync (v0.7.0)** ☁️
-- ✅ **AWS S3 provider**: Full support with multipart uploads for files >100MB
-- ✅ **Backblaze B2 provider**: Native B2 API integration (not S3-compatible)
-- ✅ **S3-compatible providers**: MinIO, Wasabi, DigitalOcean Spaces, Cloudflare R2
-- ✅ **Unified storage abstraction**: Seamlessly switch between providers with retry/failover
-- ✅ **File watcher daemon**: Real-time file system monitoring with 500ms debounce
-- ✅ **Sync queue processor**: Priority-based queuing with conflict resolution
-- ✅ **Continuous backup mode**: `skylock watch` for real-time backup
-- ✅ **SQLite sync state tracking**: Persistent state across restarts
+**v0.7.0 - Multi-Provider Storage & Real-Time Sync**
+- AWS S3 provider: Full support with multipart uploads for files >100MB
+- Backblaze B2 provider: Native B2 API integration (not S3-compatible)
+- S3-compatible providers: MinIO, Wasabi, DigitalOcean Spaces, Cloudflare R2
+- Unified storage abstraction: Seamlessly switch between providers with retry/failover
+- File watcher daemon: Real-time file system monitoring with 500ms debounce
+- Sync queue processor: Priority-based queuing with conflict resolution
+- Continuous backup mode: `skylock watch` for real-time backup
+- SQLite sync state tracking: Persistent state across restarts
 
 ### In Progress (Next Releases)
 
@@ -359,15 +358,10 @@ Have an idea? Please [open an issue](https://github.com/NullMeDev/Skylock/issues
 - [INCREMENTAL_BACKUP_GUIDE.md](INCREMENTAL_BACKUP_GUIDE.md) - Incremental backup guide
 - [VERIFICATION_GUIDE.md](VERIFICATION_GUIDE.md) - Backup verification guide
 
-### Security Documentation
+### Security & Project Documentation
 - [SECURITY.md](SECURITY.md) - Security architecture and best practices
-- [SECURITY_AUDIT.md](SECURITY_AUDIT.md) - Pre-release security audit
-- [docs/security/AUDIT_v0_5_1.md](docs/security/AUDIT_v0_5_1.md) - v0.5.1 baseline audit (v0.6.0)
-- [docs/security/SECURITY_ADVISORY_0.6.0.md](docs/security/SECURITY_ADVISORY_0.6.0.md) - v0.6.0 security advisory
-
-### Release Information
+- [SECURITY_AUDIT.md](SECURITY_AUDIT.md) - Security audit information
 - [CHANGELOG.md](CHANGELOG.md) - Complete version history
-- [RELEASE_NOTES_v0.6.0.md](RELEASE_NOTES_v0.6.0.md) - v0.6.0 release notes
 
 ### Contributing
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Contributing guidelines

@@ -1,6 +1,6 @@
 [package]
 name = "skylock-hybrid"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 rust-version = "1.70"
 resolver = "2"
@@ -13,7 +13,7 @@ members = [
     "skylock-ui",
     "skylock-monitor",
     "skylock-sync"
-]
+, "null_rust_mcp_server"]
 
 [dependencies]
 skylock-core = { path = "./skylock-core" }

@@ -81,3 +81,20 @@ config.user.toml
 # Build logs
 *.log
 build_*.log
+
+# Internal documentation (stored locally at ~/.local/share/skylock/docs/)
+GAMEPLAN.md
+PROJECT_STATUS.md
+COMPLETION_SUMMARY.md
+RESTART_QUICK_REFERENCE.md
+GITHUB_ISSUES_SUMMARY.md
+SESSION_SUMMARY*.md
+SECURITY_FIX_GAMEPLAN.md
+SECURITY_ADVISORY_0.5.1.md
+RESTORE_IMPLEMENTATION.md
+RELEASE_NOTES_*.md
+!.github/RELEASE_NOTES_*.md
+WARP.md
+docs/
+web-dashboard/
+null_rust_mcp_server/
