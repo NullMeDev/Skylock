@@ -12,6 +12,30 @@ use tokio::sync::RwLock;
 use chrono::{DateTime, Local};
 use bytesize::ByteSize;
 use sha2::{Sha256, Digest};
+use serde::Deserialize;
+
+/// Config file structure
+#[derive(Debug, Deserialize, Default)]
+pub struct Config {
+    pub data_dir: Option<String>,
+    pub hetzner: Option<HetznerConfig>,
+    pub backup: Option<BackupConfig>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct HetznerConfig {
+    pub endpoint: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub encryption_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct BackupConfig {
+    pub schedule: Option<String>,
+    pub retention_days: Option<u32>,
+    pub backup_paths: Option<Vec<String>>,
+}
 
 /// Connection status for backend
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -58,6 +82,8 @@ pub struct AppState {
     pub connection_status: ConnectionStatus,
     pub endpoint: String,
     pub username: String,
+    pub hetzner_config: Option<HetznerConfig>,
+    pub stored_encryption_key: Option<String>,
     
     // Backups
     pub backups: Vec<BackupInfo>,
@@ -182,14 +208,77 @@ impl SkylockApp {
 
         let runtime = tokio::runtime::Handle::current();
         
-        // Initialize with demo data
+        // Try to load config and connect to real backend
         let mut initial_state = AppState::default();
-        Self::load_demo_data(&mut initial_state);
+        Self::load_from_config(&mut initial_state);
         
         Self {
             state: Arc::new(RwLock::new(initial_state)),
             runtime,
         }
+    }
+    
+    /// Load configuration and try to connect to real backend
+    fn load_from_config(state: &mut AppState) {
+        // Try to load config file
+        let config_paths = [
+            dirs::config_dir().map(|p| p.join("skylock-hybrid/config.toml")),
+            Some(PathBuf::from("config.toml")),
+        ];
+        
+        let mut config: Option<Config> = None;
+        for path in config_paths.iter().flatten() {
+            if path.exists() {
+                if let Ok(content) = std::fs::read_to_string(path) {
+                    if let Ok(cfg) = toml::from_str::<Config>(&content) {
+                        config = Some(cfg);
+                        state.activity_log.push(ActivityEntry {
+                            timestamp: Local::now(),
+                            action: "Config loaded".to_string(),
+                            details: format!("From {}", path.display()),
+                            success: true,
+                        });
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if let Some(cfg) = config {
+            // Load Hetzner config
+            if let Some(hetzner) = &cfg.hetzner {
+                state.endpoint = hetzner.endpoint.clone().unwrap_or_default();
+                state.username = hetzner.username.clone().unwrap_or_default();
+                state.hetzner_config = Some(hetzner.clone());
+                
+                // Store encryption key hash for later validation
+                if let Some(key) = &hetzner.encryption_key {
+                    state.stored_encryption_key = Some(key.clone());
+                }
+            }
+            
+            // Load backup config
+            if let Some(backup) = &cfg.backup {
+                state.retention_days = backup.retention_days.unwrap_or(30);
+                state.backup_schedule = backup.schedule.clone().unwrap_or_else(|| "Daily at 2:00 AM".to_string());
+            }
+            
+            state.demo_mode = false;
+            state.connection_status = ConnectionStatus::Disconnected;
+            
+            state.activity_log.push(ActivityEntry {
+                timestamp: Local::now(),
+                action: "Ready to connect".to_string(),
+                details: format!("Endpoint: {}", state.endpoint),
+                success: true,
+            });
+        } else {
+            // Fall back to demo mode
+            Self::load_demo_data(state);
+        }
+        
+        // Default settings
+        state.compression_enabled = true;
     }
     
     /// Load demo data for UI testing when not connected
@@ -201,99 +290,14 @@ impl SkylockApp {
         state.retention_days = 30;
         state.backup_schedule = "Daily at 2:00 AM".to_string();
         state.compression_enabled = true;
-        
-        // Demo backups
-        let now = Local::now();
-        state.backups = vec![
-            BackupInfo {
-                id: "backup_20241204_020000".to_string(),
-                timestamp: now - chrono::Duration::hours(6),
-                file_count: 1247,
-                total_size: 2_500_000_000,
-                is_incremental: true,
-                verified: Some(true),
-            },
-            BackupInfo {
-                id: "backup_20241203_020000".to_string(),
-                timestamp: now - chrono::Duration::days(1),
-                file_count: 1245,
-                total_size: 2_480_000_000,
-                is_incremental: true,
-                verified: Some(true),
-            },
-            BackupInfo {
-                id: "backup_20241202_020000".to_string(),
-                timestamp: now - chrono::Duration::days(2),
-                file_count: 1240,
-                total_size: 2_450_000_000,
-                is_incremental: false,
-                verified: None,
-            },
-        ];
-        
-        state.last_backup = Some(now - chrono::Duration::hours(6));
-        state.storage_used = 15_000_000_000;
-        state.storage_total = 100_000_000_000;
-        
-        // Demo files (shown as garbled without key)
-        state.current_files = vec![
-            FileEntry {
-                path: PathBuf::from("Documents"),
-                name: "Documents".to_string(),
-                display_name: "Wf8#mK2@pL".to_string(),
-                size: 0,
-                is_directory: true,
-                is_encrypted: true,
-                modified: Some(now),
-                hash: None,
-            },
-            FileEntry {
-                path: PathBuf::from("Pictures"),
-                name: "Pictures".to_string(),
-                display_name: "Qx!9nR4&vB".to_string(),
-                size: 0,
-                is_directory: true,
-                is_encrypted: true,
-                modified: Some(now),
-                hash: None,
-            },
-            FileEntry {
-                path: PathBuf::from(".ssh"),
-                name: ".ssh".to_string(),
-                display_name: "#Hj5$Tz".to_string(),
-                size: 0,
-                is_directory: true,
-                is_encrypted: true,
-                modified: Some(now),
-                hash: None,
-            },
-        ];
-        
-        // Demo activity log
-        state.activity_log = vec![
-            ActivityEntry {
-                timestamp: now - chrono::Duration::hours(6),
-                action: "Backup completed".to_string(),
-                details: "1247 files, 2.5 GB".to_string(),
-                success: true,
-            },
-            ActivityEntry {
-                timestamp: now - chrono::Duration::days(1),
-                action: "Backup completed".to_string(),
-                details: "1245 files, 2.48 GB".to_string(),
-                success: true,
-            },
-            ActivityEntry {
-                timestamp: now - chrono::Duration::days(2),
-                action: "Full backup created".to_string(),
-                details: "1240 files, 2.45 GB".to_string(),
-                success: true,
-            },
-        ];
-        
-        // In demo mode, we don't have real encrypted data to validate against
-        // Real validation happens when connected to actual backup storage
         state.validation_test_data = None;
+        
+        state.activity_log.push(ActivityEntry {
+            timestamp: Local::now(),
+            action: "Demo mode".to_string(),
+            details: "No config found, using demo data".to_string(),
+            success: true,
+        });
     }
 
     fn render_sidebar(&self, ui: &mut egui::Ui, state: &mut AppState) {
